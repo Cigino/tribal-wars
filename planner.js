@@ -1,36 +1,52 @@
 (function () {
-  if (document.getElementById('twAttackPlanner')) return;
+
+  if (document.getElementById('planner2')) return;
 
   if (typeof $ === 'undefined') {
     alert('jQuery nie je dostupné');
     return;
   }
 
-  if (!game_data || !game_data.village) {
+  if (!window.game_data || !game_data.village) {
     alert('Script funguje iba v hre Tribal Wars');
     return;
   }
 
-  /* ===================== CONFIG ===================== */
+  /* ================= CONFIG ================= */
 
-  const unitSpeed = {
-    spear: 18, sword: 22, axe: 18, archer: 18,
-    spy: 9, light: 10, marcher: 10, heavy: 11,
-    ram: 30, catapult: 30, knight: 10, snob: 35
+  const STORAGE = 'planner2_storage';
+
+  const FAKE_LIMITS = {
+    1: { spear: 1, spy: 1, ram: 1 },
+    2: { spear: 2, spy: 1, ram: 1 },
+    5: { spear: 5, spy: 1, ram: 1 }
   };
 
-  const NIGHT_START = 0;   // 00:00
-  const NIGHT_END = 480;  // 08:00
+  const NIGHT_START = 0;
+  const NIGHT_END = 480;
 
-  /* ===================== UI ===================== */
+  /* ================= STORAGE ================= */
+
+  const DATA = JSON.parse(localStorage.getItem(STORAGE)) || {
+    coords: [],
+    fakeLimit: 1,
+    unitMode: 'ram',
+    delay: '200-400',
+    nightBlock: true,
+    split: 10
+  };
+
+  const save = () => localStorage.setItem(STORAGE, JSON.stringify(DATA));
+
+  /* ================= UI ================= */
 
   const panel = document.createElement('div');
-  panel.id = 'twAttackPlanner';
+  panel.id = 'planner2';
   panel.style = `
     position:fixed;
     top:80px;
     right:40px;
-    width:420px;
+    width:430px;
     background:#1b2b1b;
     color:#eee;
     padding:12px;
@@ -41,139 +57,116 @@
   `;
 
   panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Attack Planner PRO</h3>
+    <h3>⚔️ Planner2 – Fakes</h3>
 
-    <label>Target coordy:</label>
-    <textarea id="ap_coords" rows="4" style="width:100%;"></textarea>
-
-    <label><input type="checkbox" id="ap_arrival_on"> Dopad medzi:</label>
-    <input id="ap_arrival" style="width:100%;" value="08:00-23:59">
-
-    <label><input type="checkbox" id="ap_night_on" checked> Vyhnúť sa nočáku (00:00–08:00)</label>
-
-    <label>Typ útokov:</label>
-    <select id="ap_type" style="width:100%;">
-      <option value="real">REAL</option>
-      <option value="fake">FAKE</option>
+    Fake limit:
+    <select id="p2_limit">
+      <option value="1">1%</option>
+      <option value="2">2%</option>
+      <option value="5">5%</option>
     </select>
 
-    <label>Útokov na 1 coord:</label>
-    <input id="ap_per_coord" type="number" value="1" min="1" style="width:100%;">
+    Unit mode:
+    <select id="p2_unit">
+      <option value="ram">Ram</option>
+      <option value="catapult">Catapult</option>
+      <option value="rotate">Rotate</option>
+    </select>
 
-    <label>Útokov z 1 dediny:</label>
-    <input id="ap_per_village" type="number" value="10" min="1" style="width:100%;">
+    <label>
+      <input type="checkbox" id="p2_night"> Vyhnúť sa nočáku (00–08)
+    </label>
 
-    <label>Delay tabov (ms):</label>
-    <input id="ap_delay" value="200-400" style="width:100%;">
+    Delay (ms):
+    <input id="p2_delay" style="width:100%;">
 
-    <button id="ap_run" style="margin-top:10px;width:100%;">Otvoriť útoky</button>
-    <button id="ap_close" style="margin-top:5px;width:100%;">Zavrieť</button>
+    Coords:
+    <textarea id="p2_coords" rows="5" style="width:100%;"></textarea>
+
+    <button id="p2_save" style="width:100%;margin-top:5px;">Uložiť</button>
+
+    <hr>
+    <div id="p2_pages"></div>
+
+    <button id="p2_close" style="width:100%;margin-top:5px;">Zavrieť</button>
   `;
 
   document.body.appendChild(panel);
 
-  /* ===================== HELPERS ===================== */
+  /* ================= LOAD UI ================= */
 
-  const save = () => {
-    localStorage.setItem('ap_coords', $('#ap_coords').val());
+  $('#p2_coords').val(DATA.coords.join('\n'));
+  $('#p2_limit').val(DATA.fakeLimit);
+  $('#p2_unit').val(DATA.unitMode);
+  $('#p2_delay').val(DATA.delay);
+  $('#p2_night').prop('checked', DATA.nightBlock);
+
+  /* ================= HELPERS ================= */
+
+  const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+
+  const isNight = m => m >= NIGHT_START && m < NIGHT_END;
+
+  const getUnits = () => {
+    let u = { ...FAKE_LIMITS[DATA.fakeLimit], spy: 1 };
+    if (DATA.unitMode === 'catapult') {
+      u.catapult = 1; u.ram = 0;
+    } else if (DATA.unitMode === 'rotate') {
+      u.ram = Math.random() > 0.5 ? 1 : 0;
+      u.catapult = u.ram ? 0 : 1;
+    } else {
+      u.ram = 1; u.catapult = 0;
+    }
+    return u;
   };
 
-  $('#ap_coords').val(localStorage.getItem('ap_coords') || '');
+  /* ================= SAVE ================= */
 
-  $('#ap_coords').on('input', save);
+  $('#p2_save').click(() => {
+    DATA.coords = ($('#p2_coords').val().match(/\d+\|\d+/g) || []);
+    DATA.fakeLimit = +$('#p2_limit').val();
+    DATA.unitMode = $('#p2_unit').val();
+    DATA.delay = $('#p2_delay').val();
+    DATA.nightBlock = $('#p2_night').is(':checked');
+    save();
+    renderPages();
+  });
 
-  function parseTime(t) {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  }
+  $('#p2_close').click(() => panel.remove());
 
-  function isNight(min) {
-    return min >= NIGHT_START && min < NIGHT_END;
-  }
+  /* ================= PAGINATION ================= */
 
-  function rand(a, b) {
-    return Math.floor(Math.random() * (b - a + 1)) + a;
-  }
+  function renderPages() {
+    const wrap = $('#p2_pages').empty();
+    const pages = Math.ceil(DATA.coords.length / DATA.split);
 
-  function distance(a, b) {
-    return Math.hypot(a[0] - b[0], a[1] - b[1]);
-  }
-
-  function getFakeSpeed() {
-    const order = ['ram', 'catapult', 'spear', 'sword', 'spy'];
-    for (const u of order) {
-      const i = document.querySelector('#unit_input_' + u);
-      if (i && parseInt(i.dataset.all) > 0) return unitSpeed[u];
+    for (let i = 0; i < pages; i++) {
+      $('<button>')
+        .text(`${i * 10 + 1}-${Math.min((i + 1) * 10, DATA.coords.length)}`)
+        .css('margin', '3px')
+        .click(() => openPage(i))
+        .appendTo(wrap);
     }
-    return null;
   }
 
-  /* ===================== RUN ===================== */
-
-  $('#ap_close').click(() => panel.remove());
-
-  $('#ap_run').click(() => {
-    const coords = ($('#ap_coords').val().match(/\d+\|\d+/g) || []);
-    if (!coords.length) return alert('Žiadne coordy');
-
-    const perCoord = parseInt($('#ap_per_coord').val());
-    const perVillage = parseInt($('#ap_per_village').val());
-
-    const [d1, d2] = $('#ap_delay').val().split('-').map(Number);
-
-    const arrivalOn = $('#ap_arrival_on').is(':checked');
-    let a = 0, b = 1440;
-    if (arrivalOn) {
-      [a, b] = $('#ap_arrival').val().split('-').map(parseTime);
-    }
-
-    const avoidNight = $('#ap_night_on').is(':checked');
-    const type = $('#ap_type').val();
-
-    const villages = $('.overview_table tbody tr')
-      .map(function () {
-        const c = $(this).find('.quickedit-label').text().match(/\d+\|\d+/);
-        return c ? c[0].split('|').map(Number) : null;
-      }).get();
-
-    let opened = 0;
+  function openPage(p) {
+    const [d1, d2] = DATA.delay.split('-').map(Number);
     let delay = 0;
 
-    villages.forEach(v => {
-      let sent = 0;
-      coords.forEach(c => {
-        for (let i = 0; i < perCoord; i++) {
-          if (sent >= perVillage) return;
-
-          const target = c.split('|').map(Number);
-          const speed = type === 'fake'
-            ? getFakeSpeed()
-            : Math.max(...Object.values(unitSpeed));
-
-          if (!speed) continue;
-
-          const travel = distance(v, target) * speed / game_data.speed / game_data.unit_speed;
-          const now = new Date();
-          const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
-
-          if (arrivalOn && (arr < a || arr > b)) continue;
-          if (avoidNight && isNight(arr)) continue;
-
-          delay += rand(d1, d2);
-          setTimeout(() => {
-            window.open(
-              game_data.link_base_pure + 'place&x=' + target[0] + '&y=' + target[1],
-              '_blank'
-            );
-          }, delay);
-
-          opened++;
-          sent++;
-        }
+    DATA.coords
+      .slice(p * DATA.split, p * DATA.split + DATA.split)
+      .forEach(c => {
+        delay += rand(d1, d2);
+        setTimeout(() => {
+          window.open(
+            game_data.link_base_pure + 'place&target=' + c,
+            '_blank'
+          );
+        }, delay);
       });
-    });
+  }
 
-    alert(`Otvorených ${opened} útokov.\nOdoslanie je manuálne.`);
-  });
+  renderPages();
+  console.log('planner2.js loaded OK');
 
 })();

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  if (document.getElementById('twPlanner3')) return;
+  if (document.getElementById('twPlanner2')) return;
 
   if (typeof $ === 'undefined') {
     alert('Chýba jQuery – otvor prosím script cez $.getScript()');
@@ -15,7 +15,7 @@
 
   /* ===================== CONFIG ===================== */
 
-  const STORAGE_KEY = 'tw_planner3_data';
+  const STORAGE_KEY = 'tw_planner2_data';
 
   const DEFAULT = {
     delayMin: 200,
@@ -58,7 +58,7 @@
   /* ===================== UI ===================== */
 
   const panel = document.createElement('div');
-  panel.id = 'twPlanner3';
+  panel.id = 'twPlanner2';
   panel.style = `
     position:fixed;
     top:70px;
@@ -74,7 +74,7 @@
   `;
 
   panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Planner 3.0 (Advanced)</h3>
+    <h3 style="margin-top:0">⚔️ Planner 2.0 (Advanced)</h3>
 
     <b>FAKE coordy</b>
     <textarea id="p2_fake" rows="3" style="width:100%;"></textarea>
@@ -162,4 +162,118 @@
       ram: parseInt($('#unit_input_ram')[0]?.dataset.all || 0),
       catapult: parseInt($('#unit_input_catapult')[0]?.dataset.all || 0),
       spear: parseInt($('#unit_input_spear')[0]?.dataset.all || 0),
-      spy: parseInt($('#u
+      spy: parseInt($('#unit_input_spy')[0]?.dataset.all || 0)
+    };
+
+    // VŽDY aspoň 1 špeh
+    if (available.spy > 0) units.spy = 1;
+
+    // VŽDY ram alebo catapult
+    if (available.ram > 0) {
+      units.ram = 1;
+    } else if (available.catapult > 0) {
+      units.catapult = 1;
+    }
+
+    // ak je fake limit > 1, pridáme kopijníkov
+    const fakeLimit = parseInt(game_data.fake_limit || 1);
+    if (fakeLimit > 1 && available.spear > 0) {
+      units.spear = Math.min(fakeLimit, available.spear);
+    }
+
+    return units;
+  }
+
+  function getFakeSpeed() {
+    const order = ['ram', 'catapult', 'spear', 'spy'];
+    for (const u of order) {
+      const i = document.querySelector('#unit_input_' + u);
+      if (i && parseInt(i.dataset.all) > 0) return unitSpeed[u];
+    }
+    return null;
+  }
+
+  /* ===================== RUN ===================== */
+
+  $('#p2_run').click(() => {
+    persist();
+
+    const fakeCoords = parseCoords(DATA.sections.fake);
+    const realCoords = parseCoords(DATA.sections.real);
+    const testCoords = parseCoords(DATA.sections.test);
+
+    const allCoords = [...fakeCoords, ...realCoords, ...testCoords];
+    if (!allCoords.length) return alert('Žiadne coordy');
+
+    const villages = $('.overview_table tbody tr')
+      .map(function () {
+        const c = $(this).find('.quickedit-label').text().match(/\d+\|\d+/);
+        return c ? c[0].split('|').map(Number) : null;
+      }).get();
+
+    let openings = [];
+    let counter = 0;
+
+    villages.forEach(v => {
+      let sentFromVillage = 0;
+
+      allCoords.forEach(c => {
+        for (let i = 0; i < DATA.perCoord; i++) {
+          if (sentFromVillage >= DATA.perVillage) return;
+
+          const target = c.split('|').map(Number);
+          const speed = getFakeSpeed() || Math.max(...Object.values(unitSpeed));
+
+          const travel = distance(v, target) * speed / game_data.speed / game_data.unit_speed;
+          const now = new Date();
+          const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
+
+          if (DATA.avoidNight && isNight(arr)) continue;
+
+          openings.push({
+            x: target[0],
+            y: target[1]
+          });
+
+          sentFromVillage++;
+          counter++;
+        }
+      });
+    });
+
+    // ===== ZOBRAZIŤ ROZSAHY 1–10, 11–20, ... =====
+    let html = '<b>Otvoriť:</b><br>';
+    for (let i = 0; i < openings.length; i += 10) {
+      const from = i + 1;
+      const to = Math.min(i + 10, openings.length);
+
+      html += `<button class="p2_range" data-from="${from}" data-to="${to}" style="margin:2px;">
+        ${from}–${to}
+      </button>`;
+    }
+
+    $('#p2_ranges').html(html);
+
+    $('.p2_range').click(function () {
+      const from = parseInt($(this).data('from')) - 1;
+      const to = parseInt($(this).data('to'));
+
+      let delay = 0;
+
+      for (let i = from; i < to; i++) {
+        delay += rand(DATA.delayMin, DATA.delayMax);
+        const t = openings[i];
+
+        setTimeout(() => {
+          window.open(
+            game_data.link_base_pure + 'place&x=' + t.x + '&y=' + t.y,
+            '_blank'
+          );
+        }, delay);
+      }
+    });
+
+    alert(`Pripravených ${openings.length} útokov.`);
+  });
+
+})();

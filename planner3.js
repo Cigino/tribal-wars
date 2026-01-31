@@ -192,7 +192,7 @@
     units.catapult = cfg.catMin;
     popLeft -= cfg.catMin * POP.catapult;
 
-    const spearPop = Math.min(cfg.spearMaxPop, popLeft);
+    const spearPop = Math.max(0, Math.min(cfg.spearMaxPop, popLeft));
     units.spear = spearPop;
     popLeft -= spearPop;
 
@@ -205,19 +205,28 @@
     persist();
 
     const coords = parseCoords(DATA.sections.fake);
-    if (!coords.length) return alert('Žiadne FAKE coordy');
+    if (!coords.length) {
+      alert('❌ Žiadne FAKE coordy');
+      return;
+    }
 
-    const villages = $('.overview_table tbody tr')
-      .map(function () {
-        const m = $(this).find('.quickedit-label').text().match(/\d+\|\d+/);
-        return m ? m[0].split('|').map(Number) : null;
-      }).get();
+    const villages = Object.values(game_data.villages).map(v =>
+      v.coord.split('|').map(Number)
+    );
+
+    if (!villages.length) {
+      alert('❌ Žiadne zdrojové dediny');
+      return;
+    }
 
     let planned = [];
 
     villages.forEach(v => {
       let sent = 0;
+
       coords.forEach(c => {
+        if (sent >= DATA.perVillage) return;
+
         for (let i = 0; i < DATA.perCoord; i++) {
           if (sent >= DATA.perVillage) return;
 
@@ -240,9 +249,14 @@
       });
     });
 
+    if (!planned.length) {
+      alert('⚠️ Nevznikol žiadny útok (night block / limity)');
+      return;
+    }
+
     localStorage.setItem('tw_planner3_plan', JSON.stringify(planned));
 
-    alert(`Pripravených ${planned.length} FAKE útokov.\nPlán uložený.`);
+    alert(`✅ Pripravených ${planned.length} FAKE útokov.\nPlán uložený.`);
   });
 
 })();

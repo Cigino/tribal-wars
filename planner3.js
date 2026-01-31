@@ -4,7 +4,7 @@
   if (document.getElementById('twPlanner3')) return;
 
   if (typeof $ === 'undefined') {
-    alert('Chýba jQuery – otvor script cez $.getScript()');
+    alert('Chýba jQuery – spusti script cez $.getScript()');
     return;
   }
 
@@ -23,20 +23,27 @@
     perVillage: 10,
     perCoord: 1,
     avoidNight: true,
+    units: {
+      spyMin: 1,
+      ramMin: 5,
+      catMin: 10,
+      spearMaxPop: 30
+    },
     sections: {
-      fake: '',
-      real: '',
-      test: ''
+      fake: ''
     }
   };
 
   const NIGHT_START = 0;
   const NIGHT_END = 480;
 
-  const unitSpeed = {
-    spear: 18, sword: 22, axe: 18, archer: 18,
-    spy: 9, light: 10, marcher: 10, heavy: 11,
-    ram: 30, catapult: 30, knight: 10, snob: 35
+  const POP = {
+    spear: 1,
+    sword: 1,
+    axe: 1,
+    spy: 2,
+    ram: 5,
+    catapult: 8
   };
 
   /* ===================== STORAGE ===================== */
@@ -63,7 +70,7 @@
     position:fixed;
     top:70px;
     right:40px;
-    width:460px;
+    width:420px;
     background:#1b2b1b;
     color:#eee;
     padding:12px;
@@ -74,67 +81,83 @@
   `;
 
   panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Planner 3.0</h3>
+    <h3 style="margin-top:0">⚔️ Planner 3.0 – FAKE</h3>
 
     <b>FAKE coordy</b>
-    <textarea id="p2_fake" rows="3" style="width:100%;"></textarea>
-
-    <b>REAL coordy</b>
-    <textarea id="p2_real" rows="3" style="width:100%;"></textarea>
-
-    <b>TEST coordy</b>
-    <textarea id="p2_test" rows="2" style="width:100%;"></textarea>
+    <textarea id="p3_fake" rows="4" style="width:100%;"></textarea>
 
     <hr>
 
-    <label>Delay tabov (ms):</label>
-    <input id="p2_delay" style="width:100%;" value="200-400">
+    <label>Delay tabov (ms)</label>
+    <input id="p3_delay" style="width:100%;" value="200-400">
 
-    <label>Útokov na 1 coord:</label>
-    <input id="p2_per_coord" type="number" min="1" style="width:100%;">
+    <label>Útokov na 1 coord</label>
+    <input id="p3_per_coord" type="number" min="1" style="width:100%;">
 
-    <label>Útokov z 1 dediny:</label>
-    <input id="p2_per_village" type="number" min="1" style="width:100%;">
+    <label>Útokov z 1 dediny</label>
+    <input id="p3_per_village" type="number" min="1" style="width:100%;">
 
     <label>
-      <input type="checkbox" id="p2_night"> Neútočiť 00:00–08:00
+      <input type="checkbox" id="p3_night"> Neútočiť 00:00–08:00
     </label>
 
-    <button id="p2_run" style="margin-top:10px;width:100%;">VYPOČÍTAŤ ÚTOKY</button>
+    <hr>
+    <b>FAKE jednotky</b>
 
-    <div id="p2_ranges" style="margin-top:10px;"></div>
+    <label>Min. špehov</label>
+    <input id="u_spy" type="number" min="0" style="width:100%;">
+
+    <label>Min. baranidiel</label>
+    <input id="u_ram" type="number" min="0" style="width:100%;">
+
+    <label>Min. katapultov</label>
+    <input id="u_cat" type="number" min="0" style="width:100%;">
+
+    <label>Max. pechota (POP)</label>
+    <input id="u_spear_pop" type="number" min="0" style="width:100%;">
+
+    <button id="p3_run" style="margin-top:10px;width:100%;">
+      VYPOČÍTAŤ FAKE ÚTOKY
+    </button>
+
+    <div id="p3_ranges" style="margin-top:10px;"></div>
   `;
 
   document.body.appendChild(panel);
 
   /* ===================== INIT ===================== */
 
-  $('#p2_fake').val(DATA.sections.fake);
-  $('#p2_real').val(DATA.sections.real);
-  $('#p2_test').val(DATA.sections.test);
-  $('#p2_delay').val(`${DATA.delayMin}-${DATA.delayMax}`);
-  $('#p2_per_coord').val(DATA.perCoord);
-  $('#p2_per_village').val(DATA.perVillage);
-  $('#p2_night').prop('checked', DATA.avoidNight);
+  $('#p3_fake').val(DATA.sections.fake);
+  $('#p3_delay').val(`${DATA.delayMin}-${DATA.delayMax}`);
+  $('#p3_per_coord').val(DATA.perCoord);
+  $('#p3_per_village').val(DATA.perVillage);
+  $('#p3_night').prop('checked', DATA.avoidNight);
+
+  $('#u_spy').val(DATA.units.spyMin);
+  $('#u_ram').val(DATA.units.ramMin);
+  $('#u_cat').val(DATA.units.catMin);
+  $('#u_spear_pop').val(DATA.units.spearMaxPop);
 
   function persist() {
-    DATA.sections.fake = $('#p2_fake').val();
-    DATA.sections.real = $('#p2_real').val();
-    DATA.sections.test = $('#p2_test').val();
+    DATA.sections.fake = $('#p3_fake').val();
 
-    const [a, b] = $('#p2_delay').val().split('-').map(Number);
+    const [a, b] = $('#p3_delay').val().split('-').map(Number);
     DATA.delayMin = a;
     DATA.delayMax = b;
-    DATA.perCoord = parseInt($('#p2_per_coord').val());
-    DATA.perVillage = parseInt($('#p2_per_village').val());
-    DATA.avoidNight = $('#p2_night').is(':checked');
+
+    DATA.perCoord = parseInt($('#p3_per_coord').val());
+    DATA.perVillage = parseInt($('#p3_per_village').val());
+    DATA.avoidNight = $('#p3_night').is(':checked');
+
+    DATA.units.spyMin = parseInt($('#u_spy').val());
+    DATA.units.ramMin = parseInt($('#u_ram').val());
+    DATA.units.catMin = parseInt($('#u_cat').val());
+    DATA.units.spearMaxPop = parseInt($('#u_spear_pop').val());
 
     saveData(DATA);
   }
 
-  $('#p2_fake, #p2_real, #p2_test, #p2_delay, #p2_per_coord, #p2_per_village')
-    .on('input', persist);
-  $('#p2_night').on('change', persist);
+  $('#twPlanner3 input, #twPlanner3 textarea').on('input change', persist);
 
   /* ===================== HELPERS ===================== */
 
@@ -154,82 +177,35 @@
     return min >= NIGHT_START && min < NIGHT_END;
   }
 
-  // ===== AUTO UNIT FILLER + FAKE LIMIT DETEKCIA =====
-  function injectUnitFiller(win) {
-    if (!win) return;
+  /* ===================== FAKE UNIT CALC ===================== */
 
-    const tryInject = () => {
-      try {
-        if (!win.document || !win.document.body) {
-          return setTimeout(tryInject, 300);
-        }
+  function calculateFakeUnits(cfg, fakeLimit = 100) {
+    let popLeft = fakeLimit;
+    const units = {};
 
-        win.eval(`
-          (function(){
-            function waitForPlace(){
-              if(!document.querySelector('#units_entry_all')){
-                return setTimeout(waitForPlace, 200);
-              }
+    units.spy = cfg.spyMin;
+    popLeft -= cfg.spyMin * POP.spy;
 
-              // 🔍 fake limit z textu stránky
-              let fakeLimit = 1;
-              const txt = document.body.innerText;
-              const m = txt.match(/fake[^0-9]*(\\d+)/i);
-              if (m) fakeLimit = parseInt(m[1]);
+    units.ram = cfg.ramMin;
+    popLeft -= cfg.ramMin * POP.ram;
 
-              const getAvail = (u) => {
-                const el = document.querySelector('#unit_input_' + u);
-                return el ? parseInt(el.dataset.all || 0) : 0;
-              };
+    units.catapult = cfg.catMin;
+    popLeft -= cfg.catMin * POP.catapult;
 
-              const units = {};
+    const spearPop = Math.min(cfg.spearMaxPop, popLeft);
+    units.spear = spearPop;
+    popLeft -= spearPop;
 
-              if (getAvail('spy') > 0) units.spy = 1;
-
-              if (getAvail('ram') > 0) {
-                units.ram = 1;
-              } else if (getAvail('catapult') > 0) {
-                units.catapult = 1;
-              }
-
-              if (fakeLimit > 1 && getAvail('spear') > 0) {
-                units.spear = Math.min(fakeLimit, getAvail('spear'));
-              }
-
-              Object.entries(units).forEach(([u,v]) => {
-                const i = document.querySelector('#unit_input_' + u);
-                if(i){
-                  i.value = v;
-                  i.dispatchEvent(new Event('input', {bubbles:true}));
-                }
-              });
-
-              console.log('Planner3 AUTO OK | fakeLimit:', fakeLimit, units);
-            }
-
-            waitForPlace();
-          })();
-        `);
-      } catch {
-        setTimeout(tryInject, 300);
-      }
-    };
-
-    tryInject();
+    return units;
   }
 
   /* ===================== RUN ===================== */
 
-  $('#p2_run').click(() => {
+  $('#p3_run').click(() => {
     persist();
 
-    const coords = [
-      ...parseCoords(DATA.sections.fake),
-      ...parseCoords(DATA.sections.real),
-      ...parseCoords(DATA.sections.test)
-    ];
-
-    if (!coords.length) return alert('Žiadne coordy');
+    const coords = parseCoords(DATA.sections.fake);
+    if (!coords.length) return alert('Žiadne FAKE coordy');
 
     const villages = $('.overview_table tbody tr')
       .map(function () {
@@ -237,7 +213,7 @@
         return m ? m[0].split('|').map(Number) : null;
       }).get();
 
-    let openings = [];
+    let planned = [];
 
     villages.forEach(v => {
       let sent = 0;
@@ -246,48 +222,27 @@
           if (sent >= DATA.perVillage) return;
 
           const t = c.split('|').map(Number);
-          const speed = Math.max(...Object.values(unitSpeed));
-          const travel = distance(v, t) * speed / game_data.speed / game_data.unit_speed;
+          const travel = distance(v, t) * 30 / game_data.speed / game_data.unit_speed;
 
           const now = new Date();
           const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
           if (DATA.avoidNight && isNight(arr)) continue;
 
-          openings.push({ x: t[0], y: t[1] });
+          planned.push({
+            source: v.join('|'),
+            target: c,
+            type: 'fake',
+            units: calculateFakeUnits(DATA.units)
+          });
+
           sent++;
         }
       });
     });
 
-    let html = '<b>Otvoriť:</b><br>';
-    for (let i = 0; i < openings.length; i += 10) {
-      html += `<button class="p2_range" data-f="${i}" data-t="${i + 10}">
-        ${i + 1}–${Math.min(i + 10, openings.length)}
-      </button>`;
-    }
+    localStorage.setItem('tw_planner3_plan', JSON.stringify(planned));
 
-    $('#p2_ranges').html(html);
-
-    $('.p2_range').click(function () {
-      const from = +$(this).data('f');
-      const to = Math.min(+$(this).data('t'), openings.length);
-
-      let delay = 0;
-      for (let i = from; i < to; i++) {
-        delay += rand(DATA.delayMin, DATA.delayMax);
-        const t = openings[i];
-
-        setTimeout(() => {
-          const w = window.open(
-            game_data.link_base_pure + 'place&x=' + t.x + '&y=' + t.y,
-            '_blank'
-          );
-          setTimeout(() => injectUnitFiller(w), 500);
-        }, delay);
-      }
-    });
-
-    alert(`Pripravených ${openings.length} útokov.`);
+    alert(`Pripravených ${planned.length} FAKE útokov.\nPlán uložený.`);
   });
 
 })();

@@ -4,7 +4,7 @@
   if (document.getElementById('twPlanner3')) return;
 
   if (typeof $ === 'undefined') {
-    alert('Chýba jQuery – otvor prosím script cez $.getScript()');
+    alert('Chýba jQuery – otvor script cez $.getScript()');
     return;
   }
 
@@ -74,7 +74,7 @@
   `;
 
   panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Planner 3.0 (Advanced)</h3>
+    <h3 style="margin-top:0">⚔️ Planner 3.0</h3>
 
     <b>FAKE coordy</b>
     <textarea id="p2_fake" rows="3" style="width:100%;"></textarea>
@@ -107,7 +107,7 @@
 
   document.body.appendChild(panel);
 
-  /* ===================== INIT VALUES ===================== */
+  /* ===================== INIT ===================== */
 
   $('#p2_fake').val(DATA.sections.fake);
   $('#p2_real').val(DATA.sections.real);
@@ -154,57 +154,68 @@
     return min >= NIGHT_START && min < NIGHT_END;
   }
 
-  // ===== AUTOMATICKÉ VYPLNENIE JEDNOTIEK V NOVOM OKNE =====
+  // ===== AUTO UNIT FILLER + FAKE LIMIT DETEKCIA =====
   function injectUnitFiller(win) {
-    const script = win.document.createElement('script');
-    script.textContent = `
-      (function(){
-        function waitForPlaceScreen(){
-          if(!document.querySelector('#units_entry_all')) {
-            return setTimeout(waitForPlaceScreen, 200);
-          }
+    if (!win) return;
 
-          const fakeLimit = parseInt(game_data.fake_limit || 1);
-
-          const getAvail = (u) => {
-            const el = document.querySelector('#unit_input_' + u);
-            return el ? parseInt(el.dataset.all || 0) : 0;
-          };
-
-          let ram = getAvail('ram');
-          let cat = getAvail('catapult');
-          let spy = getAvail('spy');
-          let spear = getAvail('spear');
-
-          let units = {};
-
-          if (spy > 0) units.spy = 1;
-
-          if (ram > 0) {
-            units.ram = 1;
-          } else if (cat > 0) {
-            units.catapult = 1;
-          }
-
-          if (fakeLimit > 1 && spear > 0) {
-            units.spear = Math.min(fakeLimit, spear);
-          }
-
-          Object.entries(units).forEach(([u, v]) => {
-            const input = document.querySelector('#unit_input_' + u);
-            if (input) {
-              input.value = v;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          });
-
-          console.log('Planner3: jednotky vyplnené', units);
+    const tryInject = () => {
+      try {
+        if (!win.document || !win.document.body) {
+          return setTimeout(tryInject, 300);
         }
 
-        waitForPlaceScreen();
-      })();
-    `;
-    win.document.head.appendChild(script);
+        win.eval(`
+          (function(){
+            function waitForPlace(){
+              if(!document.querySelector('#units_entry_all')){
+                return setTimeout(waitForPlace, 200);
+              }
+
+              // 🔍 fake limit z textu stránky
+              let fakeLimit = 1;
+              const txt = document.body.innerText;
+              const m = txt.match(/fake[^0-9]*(\\d+)/i);
+              if (m) fakeLimit = parseInt(m[1]);
+
+              const getAvail = (u) => {
+                const el = document.querySelector('#unit_input_' + u);
+                return el ? parseInt(el.dataset.all || 0) : 0;
+              };
+
+              const units = {};
+
+              if (getAvail('spy') > 0) units.spy = 1;
+
+              if (getAvail('ram') > 0) {
+                units.ram = 1;
+              } else if (getAvail('catapult') > 0) {
+                units.catapult = 1;
+              }
+
+              if (fakeLimit > 1 && getAvail('spear') > 0) {
+                units.spear = Math.min(fakeLimit, getAvail('spear'));
+              }
+
+              Object.entries(units).forEach(([u,v]) => {
+                const i = document.querySelector('#unit_input_' + u);
+                if(i){
+                  i.value = v;
+                  i.dispatchEvent(new Event('input', {bubbles:true}));
+                }
+              });
+
+              console.log('Planner3 AUTO OK | fakeLimit:', fakeLimit, units);
+            }
+
+            waitForPlace();
+          })();
+        `);
+      } catch {
+        setTimeout(tryInject, 300);
+      }
+    };
+
+    tryInject();
   }
 
   /* ===================== RUN ===================== */
@@ -212,45 +223,45 @@
   $('#p2_run').click(() => {
     persist();
 
-    const fakeCoords = parseCoords(DATA.sections.fake);
-    const realCoords = parseCoords(DATA.sections.real);
-    const testCoords = parseCoords(DATA.sections.test);
+    const coords = [
+      ...parseCoords(DATA.sections.fake),
+      ...parseCoords(DATA.sections.real),
+      ...parseCoords(DATA.sections.test)
+    ];
 
-    const allCoords = [...fakeCoords, ...realCoords, ...testCoords];
-    if (!allCoords.length) return alert('Žiadne coordy');
+    if (!coords.length) return alert('Žiadne coordy');
 
     const villages = $('.overview_table tbody tr')
       .map(function () {
-        const c = $(this).find('.quickedit-label').text().match(/\d+\|\d+/);
-        return c ? c[0].split('|').map(Number) : null;
+        const m = $(this).find('.quickedit-label').text().match(/\d+\|\d+/);
+        return m ? m[0].split('|').map(Number) : null;
       }).get();
 
     let openings = [];
 
     villages.forEach(v => {
-      let sentFromVillage = 0;
-
-      allCoords.forEach(c => {
+      let sent = 0;
+      coords.forEach(c => {
         for (let i = 0; i < DATA.perCoord; i++) {
-          if (sentFromVillage >= DATA.perVillage) return;
+          if (sent >= DATA.perVillage) return;
 
-          const target = c.split('|').map(Number);
+          const t = c.split('|').map(Number);
           const speed = Math.max(...Object.values(unitSpeed));
-          const travel = distance(v, target) * speed / game_data.speed / game_data.unit_speed;
+          const travel = distance(v, t) * speed / game_data.speed / game_data.unit_speed;
 
           const now = new Date();
           const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
           if (DATA.avoidNight && isNight(arr)) continue;
 
-          openings.push({ x: target[0], y: target[1] });
-          sentFromVillage++;
+          openings.push({ x: t[0], y: t[1] });
+          sent++;
         }
       });
     });
 
     let html = '<b>Otvoriť:</b><br>';
     for (let i = 0; i < openings.length; i += 10) {
-      html += `<button class="p2_range" data-from="${i}" data-to="${i + 10}">
+      html += `<button class="p2_range" data-f="${i}" data-t="${i + 10}">
         ${i + 1}–${Math.min(i + 10, openings.length)}
       </button>`;
     }
@@ -258,8 +269,8 @@
     $('#p2_ranges').html(html);
 
     $('.p2_range').click(function () {
-      const from = +$(this).data('from');
-      const to = Math.min(+$(this).data('to'), openings.length);
+      const from = +$(this).data('f');
+      const to = Math.min(+$(this).data('t'), openings.length);
 
       let delay = 0;
       for (let i = from; i < to; i++) {
@@ -271,7 +282,7 @@
             game_data.link_base_pure + 'place&x=' + t.x + '&y=' + t.y,
             '_blank'
           );
-          setTimeout(() => injectUnitFiller(w), 1500);
+          setTimeout(() => injectUnitFiller(w), 500);
         }, delay);
       }
     });

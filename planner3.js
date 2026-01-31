@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  if (document.getElementById('twPlanner2')) return;
+  if (document.getElementById('twPlanner3')) return;
 
   if (typeof $ === 'undefined') {
     alert('Chýba jQuery – otvor prosím script cez $.getScript()');
@@ -15,7 +15,7 @@
 
   /* ===================== CONFIG ===================== */
 
-  const STORAGE_KEY = 'tw_planner2_data';
+  const STORAGE_KEY = 'tw_planner3_data';
 
   const DEFAULT = {
     delayMin: 200,
@@ -58,7 +58,7 @@
   /* ===================== UI ===================== */
 
   const panel = document.createElement('div');
-  panel.id = 'twPlanner2';
+  panel.id = 'twPlanner3';
   panel.style = `
     position:fixed;
     top:70px;
@@ -74,7 +74,7 @@
   `;
 
   panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Planner 2.0 (Advanced)</h3>
+    <h3 style="margin-top:0">⚔️ Planner 3.0 (Advanced)</h3>
 
     <b>FAKE coordy</b>
     <textarea id="p2_fake" rows="3" style="width:100%;"></textarea>

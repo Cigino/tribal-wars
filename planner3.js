@@ -30,8 +30,8 @@
     }
   };
 
-  const NIGHT_START = 0;      // 00:00
-  const NIGHT_END = 480;      // 08:00
+  const NIGHT_START = 0;
+  const NIGHT_END = 480;
 
   const unitSpeed = {
     spear: 18, sword: 22, axe: 18, archer: 18,
@@ -154,43 +154,57 @@
     return min >= NIGHT_START && min < NIGHT_END;
   }
 
-  // ===== FAKE LOGIKA (MINIMÁLNE JEDNOTKY + VŽDY ŠPEH + RAM/CATA) =====
-  function buildFakeUnits() {
-    const units = {};
+  // ===== AUTOMATICKÉ VYPLNENIE JEDNOTIEK V NOVOM OKNE =====
+  function injectUnitFiller(win) {
+    const script = win.document.createElement('script');
+    script.textContent = `
+      (function(){
+        function waitForPlaceScreen(){
+          if(!document.querySelector('#units_entry_all')) {
+            return setTimeout(waitForPlaceScreen, 200);
+          }
 
-    const available = {
-      ram: parseInt($('#unit_input_ram')[0]?.dataset.all || 0),
-      catapult: parseInt($('#unit_input_catapult')[0]?.dataset.all || 0),
-      spear: parseInt($('#unit_input_spear')[0]?.dataset.all || 0),
-      spy: parseInt($('#unit_input_spy')[0]?.dataset.all || 0)
-    };
+          const fakeLimit = parseInt(game_data.fake_limit || 1);
 
-    // VŽDY aspoň 1 špeh
-    if (available.spy > 0) units.spy = 1;
+          const getAvail = (u) => {
+            const el = document.querySelector('#unit_input_' + u);
+            return el ? parseInt(el.dataset.all || 0) : 0;
+          };
 
-    // VŽDY ram alebo catapult
-    if (available.ram > 0) {
-      units.ram = 1;
-    } else if (available.catapult > 0) {
-      units.catapult = 1;
-    }
+          let ram = getAvail('ram');
+          let cat = getAvail('catapult');
+          let spy = getAvail('spy');
+          let spear = getAvail('spear');
 
-    // ak je fake limit > 1, pridáme kopijníkov
-    const fakeLimit = parseInt(game_data.fake_limit || 1);
-    if (fakeLimit > 1 && available.spear > 0) {
-      units.spear = Math.min(fakeLimit, available.spear);
-    }
+          let units = {};
 
-    return units;
-  }
+          if (spy > 0) units.spy = 1;
 
-  function getFakeSpeed() {
-    const order = ['ram', 'catapult', 'spear', 'spy'];
-    for (const u of order) {
-      const i = document.querySelector('#unit_input_' + u);
-      if (i && parseInt(i.dataset.all) > 0) return unitSpeed[u];
-    }
-    return null;
+          if (ram > 0) {
+            units.ram = 1;
+          } else if (cat > 0) {
+            units.catapult = 1;
+          }
+
+          if (fakeLimit > 1 && spear > 0) {
+            units.spear = Math.min(fakeLimit, spear);
+          }
+
+          Object.entries(units).forEach(([u, v]) => {
+            const input = document.querySelector('#unit_input_' + u);
+            if (input) {
+              input.value = v;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          });
+
+          console.log('Planner3: jednotky vyplnené', units);
+        }
+
+        waitForPlaceScreen();
+      })();
+    `;
+    win.document.head.appendChild(script);
   }
 
   /* ===================== RUN ===================== */
@@ -212,7 +226,6 @@
       }).get();
 
     let openings = [];
-    let counter = 0;
 
     villages.forEach(v => {
       let sentFromVillage = 0;
@@ -222,53 +235,43 @@
           if (sentFromVillage >= DATA.perVillage) return;
 
           const target = c.split('|').map(Number);
-          const speed = getFakeSpeed() || Math.max(...Object.values(unitSpeed));
-
+          const speed = Math.max(...Object.values(unitSpeed));
           const travel = distance(v, target) * speed / game_data.speed / game_data.unit_speed;
+
           const now = new Date();
           const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
-
           if (DATA.avoidNight && isNight(arr)) continue;
 
-          openings.push({
-            x: target[0],
-            y: target[1]
-          });
-
+          openings.push({ x: target[0], y: target[1] });
           sentFromVillage++;
-          counter++;
         }
       });
     });
 
-    // ===== ZOBRAZIŤ ROZSAHY 1–10, 11–20, ... =====
     let html = '<b>Otvoriť:</b><br>';
     for (let i = 0; i < openings.length; i += 10) {
-      const from = i + 1;
-      const to = Math.min(i + 10, openings.length);
-
-      html += `<button class="p2_range" data-from="${from}" data-to="${to}" style="margin:2px;">
-        ${from}–${to}
+      html += `<button class="p2_range" data-from="${i}" data-to="${i + 10}">
+        ${i + 1}–${Math.min(i + 10, openings.length)}
       </button>`;
     }
 
     $('#p2_ranges').html(html);
 
     $('.p2_range').click(function () {
-      const from = parseInt($(this).data('from')) - 1;
-      const to = parseInt($(this).data('to'));
+      const from = +$(this).data('from');
+      const to = Math.min(+$(this).data('to'), openings.length);
 
       let delay = 0;
-
       for (let i = from; i < to; i++) {
         delay += rand(DATA.delayMin, DATA.delayMax);
         const t = openings[i];
 
         setTimeout(() => {
-          window.open(
+          const w = window.open(
             game_data.link_base_pure + 'place&x=' + t.x + '&y=' + t.y,
             '_blank'
           );
+          setTimeout(() => injectUnitFiller(w), 1500);
         }, delay);
       }
     });

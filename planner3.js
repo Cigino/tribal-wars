@@ -1,247 +1,202 @@
 (function () {
   'use strict';
-
   if (document.getElementById('twPlanner3')) return;
 
-  if (typeof $ === 'undefined') {
-    alert('Chýba jQuery – spusti script cez $.getScript()');
+  /* ================== GUARDS ================== */
+
+  if (!window.game_data || !game_data.server_time) {
+    alert('Script musí bežať v hre Tribal Wars');
     return;
   }
 
-  if (!window.game_data || !game_data.village) {
-    alert('Script funguje iba v hre Tribal Wars');
-    return;
-  }
-
-  /* ===================== CONFIG ===================== */
+  /* ================== CONST ================== */
 
   const STORAGE_KEY = 'tw_planner3_data';
-
-  const DEFAULT = {
-    delayMin: 200,
-    delayMax: 400,
-    perVillage: 10,
-    perCoord: 1,
-    avoidNight: true,
-    units: {
-      spyMin: 1,
-      ramMin: 5,
-      catMin: 10,
-      spearMaxPop: 30
-    },
-    sections: {
-      fake: ''
-    }
-  };
-
   const NIGHT_START = 0;
   const NIGHT_END = 480;
 
-  const POP = {
-    spear: 1,
-    sword: 1,
-    axe: 1,
-    spy: 2,
-    ram: 5,
-    catapult: 8
+  const POP = { spy: 2, ram: 5, catapult: 8, spear: 1 };
+
+  /* ================== DEFAULT ================== */
+
+  const DEFAULT = {
+    perVillage: 10,
+    perCoord: 1,
+    avoidNight: true,
+    arrivalFrom: '',
+    arrivalTo: '',
+    units: { spyMin: 1, ramMin: 5, catMin: 10, spearMaxPop: 30 },
+    fakeCoords: ''
   };
 
-  /* ===================== STORAGE ===================== */
+  /* ================== STORAGE ================== */
 
-  function loadData() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT;
-    } catch {
-      return DEFAULT;
-    }
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT; }
+    catch { return DEFAULT; }
   }
 
-  function saveData(d) {
+  function save(d) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
   }
 
-  let DATA = loadData();
+  let DATA = load();
 
-  /* ===================== UI ===================== */
+  /* ================== UI ================== */
 
-  const panel = document.createElement('div');
-  panel.id = 'twPlanner3';
-  panel.style = `
-    position:fixed;
-    top:70px;
-    right:40px;
-    width:420px;
-    background:#1b2b1b;
-    color:#eee;
-    padding:12px;
-    z-index:99999;
-    border:2px solid #3f6b3f;
-    font-family:Arial;
-    box-shadow:0 0 15px #000;
+  const box = document.createElement('div');
+  box.id = 'twPlanner3';
+  box.style = `
+    position:fixed; top:70px; right:40px; width:430px;
+    background:#1b2b1b; color:#eee; padding:12px;
+    z-index:99999; border:2px solid #3f6b3f;
+    font-family:Arial; box-shadow:0 0 15px #000;
   `;
 
-  panel.innerHTML = `
-    <h3 style="margin-top:0">⚔️ Planner 3.0 – FAKE</h3>
+  box.innerHTML = `
+    <h3>⚔️ Planner 3.0 – FAKE</h3>
 
     <b>FAKE coordy</b>
-    <textarea id="p3_fake" rows="4" style="width:100%;"></textarea>
+    <textarea id="p_fake" rows="3" style="width:100%"></textarea>
+
+    <b>Arrival od (YYYY-MM-DD HH:MM)</b>
+    <input id="p_from" style="width:100%">
+
+    <b>Arrival do (YYYY-MM-DD HH:MM)</b>
+    <input id="p_to" style="width:100%">
 
     <hr>
 
-    <label>Delay tabov (ms)</label>
-    <input id="p3_delay" style="width:100%;" value="200-400">
+    <label>Útokov z dediny</label>
+    <input id="p_pv" type="number" min="1" style="width:100%">
 
-    <label>Útokov na 1 coord</label>
-    <input id="p3_per_coord" type="number" min="1" style="width:100%;">
+    <label>Útokov na coord</label>
+    <input id="p_pc" type="number" min="1" style="width:100%">
 
-    <label>Útokov z 1 dediny</label>
-    <input id="p3_per_village" type="number" min="1" style="width:100%;">
-
-    <label>
-      <input type="checkbox" id="p3_night"> Neútočiť 00:00–08:00
-    </label>
+    <label><input type="checkbox" id="p_night"> Mimo nočák (00–08)</label>
 
     <hr>
     <b>FAKE jednotky</b>
+    <input id="u_spy" type="number" placeholder="Min. spy" style="width:100%">
+    <input id="u_ram" type="number" placeholder="Min. ram" style="width:100%">
+    <input id="u_cat" type="number" placeholder="Min. cat" style="width:100%">
+    <input id="u_pop" type="number" placeholder="Max POP spear" style="width:100%">
 
-    <label>Min. špehov</label>
-    <input id="u_spy" type="number" min="0" style="width:100%;">
-
-    <label>Min. baranidiel</label>
-    <input id="u_ram" type="number" min="0" style="width:100%;">
-
-    <label>Min. katapultov</label>
-    <input id="u_cat" type="number" min="0" style="width:100%;">
-
-    <label>Max. pechota (POP)</label>
-    <input id="u_spear_pop" type="number" min="0" style="width:100%;">
-
-    <button id="p3_run" style="margin-top:10px;width:100%;">
-      VYPOČÍTAŤ FAKE ÚTOKY
+    <button id="p_run" style="width:100%;margin-top:8px">
+      VYPOČÍTAŤ FAKE
     </button>
-
-    <div id="p3_ranges" style="margin-top:10px;"></div>
   `;
 
-  document.body.appendChild(panel);
+  document.body.appendChild(box);
 
-  /* ===================== INIT ===================== */
+  /* ================== INIT ================== */
 
-  $('#p3_fake').val(DATA.sections.fake);
-  $('#p3_delay').val(`${DATA.delayMin}-${DATA.delayMax}`);
-  $('#p3_per_coord').val(DATA.perCoord);
-  $('#p3_per_village').val(DATA.perVillage);
-  $('#p3_night').prop('checked', DATA.avoidNight);
+  p_fake.value = DATA.fakeCoords;
+  p_from.value = DATA.arrivalFrom;
+  p_to.value = DATA.arrivalTo;
+  p_pv.value = DATA.perVillage;
+  p_pc.value = DATA.perCoord;
+  p_night.checked = DATA.avoidNight;
+  u_spy.value = DATA.units.spyMin;
+  u_ram.value = DATA.units.ramMin;
+  u_cat.value = DATA.units.catMin;
+  u_pop.value = DATA.units.spearMaxPop;
 
-  $('#u_spy').val(DATA.units.spyMin);
-  $('#u_ram').val(DATA.units.ramMin);
-  $('#u_cat').val(DATA.units.catMin);
-  $('#u_spear_pop').val(DATA.units.spearMaxPop);
+  /* ================== HELPERS ================== */
 
-  function persist() {
-    DATA.sections.fake = $('#p3_fake').val();
-
-    const [a, b] = $('#p3_delay').val().split('-').map(Number);
-    DATA.delayMin = a;
-    DATA.delayMax = b;
-
-    DATA.perCoord = parseInt($('#p3_per_coord').val());
-    DATA.perVillage = parseInt($('#p3_per_village').val());
-    DATA.avoidNight = $('#p3_night').is(':checked');
-
-    DATA.units.spyMin = parseInt($('#u_spy').val());
-    DATA.units.ramMin = parseInt($('#u_ram').val());
-    DATA.units.catMin = parseInt($('#u_cat').val());
-    DATA.units.spearMaxPop = parseInt($('#u_spear_pop').val());
-
-    saveData(DATA);
+  function parseCoords(t) {
+    return (t.match(/\d+\|\d+/g) || []);
   }
 
-  $('#twPlanner3 input, #twPlanner3 textarea').on('input change', persist);
-
-  /* ===================== HELPERS ===================== */
-
-  function parseCoords(txt) {
-    return (txt.match(/\d+\|\d+/g) || []);
+  function serverNow() {
+    return new Date(game_data.server_time * 1000);
   }
 
   function rand(a, b) {
     return Math.floor(Math.random() * (b - a + 1)) + a;
   }
 
+  function isNight(date) {
+    const m = date.getHours() * 60 + date.getMinutes();
+    return m >= NIGHT_START && m < NIGHT_END;
+  }
+
   function distance(a, b) {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
 
-  function isNight(min) {
-    return min >= NIGHT_START && min < NIGHT_END;
+  function fakeUnits() {
+    let pop = 100;
+    const u = {};
+    u.spy = DATA.units.spyMin; pop -= u.spy * POP.spy;
+    u.ram = DATA.units.ramMin; pop -= u.ram * POP.ram;
+    u.catapult = DATA.units.catMin; pop -= u.catapult * POP.catapult;
+    u.spear = Math.max(0, Math.min(DATA.units.spearMaxPop, pop));
+    return u;
   }
 
-  /* ===================== FAKE UNIT CALC ===================== */
+  /* ================== RUN ================== */
 
-  function calculateFakeUnits(cfg, fakeLimit = 100) {
-    let popLeft = fakeLimit;
-    const units = {};
+  p_run.onclick = () => {
+    DATA = {
+      fakeCoords: p_fake.value,
+      arrivalFrom: p_from.value,
+      arrivalTo: p_to.value,
+      perVillage: +p_pv.value,
+      perCoord: +p_pc.value,
+      avoidNight: p_night.checked,
+      units: {
+        spyMin: +u_spy.value,
+        ramMin: +u_ram.value,
+        catMin: +u_cat.value,
+        spearMaxPop: +u_pop.value
+      }
+    };
+    save(DATA);
 
-    units.spy = cfg.spyMin;
-    popLeft -= cfg.spyMin * POP.spy;
+    const coords = parseCoords(DATA.fakeCoords);
+    if (!coords.length) return alert('Žiadne coordy');
 
-    units.ram = cfg.ramMin;
-    popLeft -= cfg.ramMin * POP.ram;
+    const from = new Date(DATA.arrivalFrom.replace(' ', 'T'));
+    const to = new Date(DATA.arrivalTo.replace(' ', 'T'));
+    if (isNaN(from) || isNaN(to) || from >= to)
+      return alert('Zlé arrival okno');
 
-    units.catapult = cfg.catMin;
-    popLeft -= cfg.catMin * POP.catapult;
+    const villages = Object.values(game_data.villages)
+      .map(v => v.coord.split('|').map(Number));
 
-    const spearPop = Math.max(0, Math.min(cfg.spearMaxPop, popLeft));
-    units.spear = spearPop;
-    popLeft -= spearPop;
-
-    return units;
-  }
-
-  /* ===================== RUN ===================== */
-
-  $('#p3_run').click(() => {
-    persist();
-
-    const coords = parseCoords(DATA.sections.fake);
-    if (!coords.length) {
-      alert('❌ Žiadne FAKE coordy');
-      return;
-    }
-
-    const villages = Object.values(game_data.villages).map(v =>
-      v.coord.split('|').map(Number)
-    );
-
-    if (!villages.length) {
-      alert('❌ Žiadne zdrojové dediny');
-      return;
-    }
-
-    let planned = [];
+    let plan = [];
 
     villages.forEach(v => {
       let sent = 0;
-
       coords.forEach(c => {
-        if (sent >= DATA.perVillage) return;
-
         for (let i = 0; i < DATA.perCoord; i++) {
           if (sent >= DATA.perVillage) return;
 
+          let arrival;
+          let attempts = 0;
+
+          do {
+            arrival = new Date(rand(from.getTime(), to.getTime()));
+            attempts++;
+          } while (
+            DATA.avoidNight && isNight(arrival) && attempts < 50
+          );
+
+          if (DATA.avoidNight && isNight(arrival)) return;
+
           const t = c.split('|').map(Number);
-          const travel = distance(v, t) * 30 / game_data.speed / game_data.unit_speed;
+          const travelMin = distance(v, t) * 30 / game_data.speed / game_data.unit_speed;
+          const send = new Date(arrival.getTime() - travelMin * 60000);
 
-          const now = new Date();
-          const arr = (now.getHours() * 60 + now.getMinutes() + travel) % 1440;
-          if (DATA.avoidNight && isNight(arr)) continue;
+          if (send < serverNow()) return;
 
-          planned.push({
+          plan.push({
             source: v.join('|'),
             target: c,
-            type: 'fake',
-            units: calculateFakeUnits(DATA.units)
+            send,
+            arrival,
+            units: fakeUnits()
           });
 
           sent++;
@@ -249,14 +204,10 @@
       });
     });
 
-    if (!planned.length) {
-      alert('⚠️ Nevznikol žiadny útok (night block / limity)');
-      return;
-    }
+    if (!plan.length) return alert('Nevznikol žiadny útok');
 
-    localStorage.setItem('tw_planner3_plan', JSON.stringify(planned));
-
-    alert(`✅ Pripravených ${planned.length} FAKE útokov.\nPlán uložený.`);
-  });
+    localStorage.setItem('tw_planner3_plan', JSON.stringify(plan));
+    alert(`✅ Naplánovaných ${plan.length} FAKE útokov`);
+  };
 
 })();

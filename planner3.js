@@ -1,38 +1,64 @@
 // ==UserScript==
-// @name        Tribal Wars Planner + Costache bookmarklet support
+// @name        TW Planner + Costache Bookmarklet Generator
 // @namespace   tribalwars
 // @match       https://*.tribalwars.net/*
-// @version     1.0
+// @version     1.1
 // ==/UserScript==
 
 (async function () {
-    /* --- IMPORT CryptoJS AES pre šifrovanie Costache bookmarkletu --- */
+
+    // 1) Načítame CryptoJS (POTREBNÉ pre Costache)
     const cryptoScript = document.createElement("script");
     cryptoScript.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js";
     document.head.appendChild(cryptoScript);
     await new Promise(res => cryptoScript.onload = res);
 
-    /* --- UI HLAVNEJ FUNKCIE pre plánovač a bookmarklet --- */
+    // 2) Vytvoríme UI okno
     const container = document.createElement("div");
-    container.style = "position:fixed;bottom:10px;right:10px;width:350px;z-index:9999;background:#fff;border:2px solid #000;padding:10px;";
+    container.style = `
+        position:fixed;
+        bottom:10px;
+        right:10px;
+        width:360px;
+        z-index:999999;
+        background:#fff;
+        border:2px solid #000;
+        padding:10px;
+        font-size:12px;
+    `;
 
     container.innerHTML = `
-        <h3>TW Planner + Costache fake</h3>
-        <label>Fake coordy (x|y):</label><br><input id="inp_fake" style="width:100%"><br>
-        <label>World number:</label><br><input id="inp_world" style="width:100%"><br>
-        <label>Dropbox token:</label><br><input id="inp_token" style="width:100%"><br>
-        <label>DB Name:</label><br><input id="inp_db" style="width:100%"><br>
-        <label>Tvoj admin ID:</label><br><input id="inp_admin" style="width:100%"><br><br>
+        <h3>Costache Bookmarklet Generator</h3>
 
-        <button id="btn_generate">Generuj Costache bookmarklet</button><br><br>
+        <label>Fake koordináty (x|y):</label><br>
+        <input id="inp_fake" style="width:100%"><br><br>
+
+        <label>Číslo sveta (napr. 35):</label><br>
+        <input id="inp_world" style="width:100%"><br><br>
+
+        <label>Dropbox TOKEN (POVINNÉ!):</label><br>
+        <input id="inp_token" style="width:100%"><br><br>
+
+        <label>Názov databázy (DB name):</label><br>
+        <input id="inp_db" style="width:100%"><br><br>
+
+        <label>Tvoje admin ID:</label><br>
+        <input id="inp_admin" style="width:100%"><br><br>
+
+        <button id="btn_generate">GENERUJ BOOKMARKLET</button><br><br>
 
         <textarea id="out_bookmark" rows="4" style="width:100%"></textarea>
+        <p style="font-size:10px;color:gray;">
+        Skopíruj text vyššie a ulož ako záložku v prehliadači.
+        </p>
     `;
+
     document.body.appendChild(container);
 
-    /* --- FUNKCIA na generovanie bookmarkletu --- */
+    // 3) Funkcia na generovanie Costache bookmarkletu
     function generateCostacheBookmarklet(config) {
-        // pripravi text s potrebnymi hodnotami
+
+        // TOTO MUSÍ byť rovnaké ako u Costache launcheru:
         const plainText =
             `dropboxToken="${config.dropboxToken}";` +
             `databaseName="${config.databaseName}";` +
@@ -41,9 +67,9 @@
             `fakeCoords="${config.fakeCoords}";`;
 
         const encryptionKey = "automateThisAnnoyingPart";
+
         const encrypted = CryptoJS.AES.encrypt(plainText, encryptionKey).toString();
 
-        // bookmarklet v spravnom formate pre Costache main skript
         const bookmarklet =
             "javascript:var encryptedData='" + encrypted +
             "';$.getScript('https://dl.dropboxusercontent.com/s/2q29vaqbibe6tph/fakeScriptMain.js?dl=0');void(0);";
@@ -51,16 +77,26 @@
         return bookmarklet;
     }
 
-    /* --- STLAČENIE TLACIDLA --- */
+    // 4) Keď klikneš na tlačidlo
     document.getElementById("btn_generate").onclick = () => {
+
+        const token = document.getElementById("inp_token").value.trim();
+
+        if (!token) {
+            alert("MUSÍŠ zadať Dropbox TOKEN, inak to NEBUDE fungovať!");
+            return;
+        }
+
         const cfg = {
             fakeCoords: document.getElementById("inp_fake").value.trim(),
             worldNumber: parseInt(document.getElementById("inp_world").value.trim()) || 0,
-            dropboxToken: document.getElementById("inp_token").value.trim(),
+            dropboxToken: token,
             databaseName: document.getElementById("inp_db").value.trim(),
             adminId: document.getElementById("inp_admin").value.trim()
         };
+
         const bm = generateCostacheBookmarklet(cfg);
         document.getElementById("out_bookmark").value = bm;
     };
+
 })();

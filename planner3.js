@@ -13,15 +13,13 @@
   /* ================== KONŠTANTY ================== */
 
   const STORAGE_KEY = 'tw_planner3_data';
-  const NIGHT_START = 0;     // 00:00
-  const NIGHT_END = 480;     // 08:00
+  const NIGHT_START = 0;
+  const NIGHT_END = 480;
 
-  const POP = {
-    spy: 2,
-    ram: 5,
-    catapult: 8,
-    spear: 1
-  };
+  const SOFT_BONUS = 2;
+  const SOFT_DIST = 25;
+
+  const POP = { spy: 2, ram: 5, catapult: 8, spear: 1 };
 
   /* ================== DEFAULT ================== */
 
@@ -43,11 +41,8 @@
   /* ================== STORAGE ================== */
 
   function load() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT;
-    } catch {
-      return DEFAULT;
-    }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || DEFAULT; }
+    catch { return DEFAULT; }
   }
 
   function save(d) {
@@ -146,18 +141,10 @@
     return m >= NIGHT_START && m < NIGHT_END;
   }
 
-  // COSTACHE-LIKE SERVER TIME
   function serverNow() {
     if (game_data.server_time) {
       return new Date(game_data.server_time * 1000);
     }
-
-    const t = document.getElementById('serverTime')?.textContent;
-    const d = document.getElementById('serverDate')?.textContent;
-    if (t && d) {
-      return new Date(`${d.replace(/\./g, '-')} ${t}`);
-    }
-
     return new Date();
   }
 
@@ -165,16 +152,11 @@
     let pop = 100;
     const u = {};
 
-    u.spy = DATA.units.spyMin;
-    pop -= u.spy * POP.spy;
-
-    u.ram = DATA.units.ramMin;
-    pop -= u.ram * POP.ram;
-
-    u.catapult = DATA.units.catMin;
-    pop -= u.catapult * POP.catapult;
-
+    u.spy = DATA.units.spyMin; pop -= u.spy * POP.spy;
+    u.ram = DATA.units.ramMin; pop -= u.ram * POP.ram;
+    u.catapult = DATA.units.catMin; pop -= u.catapult * POP.catapult;
     u.spear = Math.max(0, Math.min(DATA.units.spearMaxPop, pop));
+
     return u;
   }
 
@@ -197,6 +179,14 @@
     };
     save(DATA);
 
+    const stats = {
+      night: 0,
+      window: 0,
+      past: 0,
+      perVillage: 0,
+      accepted: 0
+    };
+
     const coords = parseCoords(DATA.fakeCoords);
     if (!coords.length) return alert('❌ Žiadne FAKE coordy');
 
@@ -209,52 +199,81 @@
     const villages = Object.values(game_data.villages)
       .map(v => v.coord.split('|').map(Number));
 
+    const coordCount = {};
+    const heat = {};
     let plan = [];
 
     villages.forEach(v => {
       let sent = 0;
 
       coords.forEach(c => {
-        for (let i = 0; i < DATA.perCoord; i++) {
-          if (sent >= DATA.perVillage) return;
+        coordCount[c] = coordCount[c] || 0;
+        if (coordCount[c] >= DATA.perCoord) return;
 
-          let arrival;
-          let tries = 0;
+        const t = c.split('|').map(Number);
+        const dist = distance(v, t);
 
-          do {
-            arrival = new Date(rand(from.getTime(), to.getTime()));
-            tries++;
-          } while (DATA.avoidNight && isNight(arrival) && tries < 50);
+        const max = DATA.perVillage +
+          (dist <= SOFT_DIST ? SOFT_BONUS : 0);
 
-          if (DATA.avoidNight && isNight(arrival)) return;
-
-          const t = c.split('|').map(Number);
-          const travelMin =
-            distance(v, t) * 30 / game_data.speed / game_data.unit_speed;
-
-          const send = new Date(arrival.getTime() - travelMin * 60000);
-          if (send < serverNow()) return;
-
-          plan.push({
-            source: v.join('|'),
-            target: c,
-            send,
-            arrival,
-            units: fakeUnits()
-          });
-
-          sent++;
+        if (sent >= max) {
+          stats.perVillage++;
+          return;
         }
+
+        let arrival, tries = 0;
+        do {
+          arrival = new Date(rand(from.getTime(), to.getTime()));
+          tries++;
+        } while (DATA.avoidNight && isNight(arrival) && tries < 50);
+
+        if (DATA.avoidNight && isNight(arrival)) {
+          stats.night++;
+          return;
+        }
+
+        const travelMin =
+          dist * 30 / game_data.speed / game_data.unit_speed;
+
+        const send = new Date(arrival.getTime() - travelMin * 60000);
+        if (send < serverNow()) {
+          stats.past++;
+          return;
+        }
+
+        plan.push({
+          source: v.join('|'),
+          target: c,
+          send,
+          arrival,
+          units: fakeUnits()
+        });
+
+        coordCount[c]++;
+        sent++;
+        stats.accepted++;
+
+        const bucket = Math.floor(dist / 10) * 10;
+        heat[bucket] = (heat[bucket] || 0) + 1;
       });
     });
 
     if (!plan.length) {
-      alert('⚠️ Nevznikol žiadny útok (nočák / časové okno)');
+      alert('⚠️ Nevznikol žiadny útok');
       return;
     }
 
+    console.table(heat);
+    console.table(stats);
+
     localStorage.setItem('tw_planner3_plan', JSON.stringify(plan));
-    alert(`✅ Naplánovaných ${plan.length} FAKE útokov`);
+
+    alert(
+      `✅ FAKE: ${plan.length}\n` +
+      `🌙 Nočák: ${stats.night}\n` +
+      `⏱️ Minulosť: ${stats.past}\n` +
+      `🚫 Limit dediny: ${stats.perVillage}`
+    );
   };
 
 })();

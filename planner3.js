@@ -1,139 +1,144 @@
 // ==UserScript==
-// @name        TW Planner (GitHub edition for Costache)
-// @namespace   tribalwars
-// @match       https://*.tribalwars.net/*
-// @version     2.0
+// @name         TW Fake Tabs – All Units Except Noble
+// @namespace    tw.fake.tabs.allunits
+// @version      1.5
+// @match        https://*.tribalwars.*/game.php*
+// @grant        none
 // ==/UserScript==
 
-(async function () {
+(function () {
+  'use strict';
 
-    /* ================================
-       1) NAČÍTAME CryptoJS (pre kompatibilitu)
-    ================================ */
-    const cryptoScript = document.createElement("script");
-    cryptoScript.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js";
-    document.head.appendChild(cryptoScript);
-    await new Promise(res => cryptoScript.onload = res);
+  if (!window.game_data || !game_data.village) {
+    alert("Spusť to priamo v Tribal Wars.");
+    return;
+  }
 
-    /* ================================
-       2) UI OKNO V HRE
-    ================================ */
-    const container = document.createElement("div");
-    container.style = `
-        position:fixed;
-        bottom:10px;
-        right:10px;
-        width:380px;
-        z-index:999999;
-        background:#fff;
-        border:2px solid #000;
-        padding:10px;
-        font-size:12px;
-    `;
+  // POP ceny jednotiek
+  const POP = {
+    spy: 2,
+    spear: 1,
+    axe: 1,
+    light: 4,
+    heavy: 6,
+    ram: 5,
+    catapult: 8
+    // noble excluded
+  };
 
-    container.innerHTML = `
-        <h3>Costache (GitHub) Bookmarklet</h3>
+  function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 
-        <label>Fake koordináty (x|y):</label><br>
-        <input id="inp_fake" style="width:100%"><br><br>
+  const box = document.createElement("div");
+  box.style = `
+    position:fixed;
+    top:70px;
+    right:40px;
+    width:460px;
+    background:#1b2b1b;
+    color:#eee;
+    padding:10px;
+    z-index:99999;
+    border:2px solid #3f6b3f;
+  `;
 
-        <label>Číslo sveta (napr. 35):</label><br>
-        <input id="inp_world" style="width:100%"><br><br>
+  box.innerHTML = `
+    <h3>⚔️ Fake → All Units Except Noble</h3>
 
-        <label>GitHub RAW URL databázy:</label><br>
-        <input id="inp_github" style="width:100%" 
-        placeholder="https://raw.githubusercontent.com/USER/REPO/main/db.json"><br><br>
+    <b>Ciele (x|y, jeden na riadok)</b>
+    <textarea id="ft_targets" rows="4" style="width:100%"></textarea>
 
-        <label>Názov databázy (ľubovoľné meno):</label><br>
-        <input id="inp_db" style="width:100%"><br><br>
+    <hr>
+    <b>Minimálne jednotky</b>
+    <input id="min_spy" type="number" value="1" style="width:100%"> Spy
+    <input id="min_ram" type="number" value="3" style="width:100%"> Ram
+    <input id="min_cat" type="number" value="5" style="width:100%"> Cat
+    <input id="min_spear" type="number" value="0" style="width:100%"> Spear
+    <input id="min_axe" type="number" value="0" style="width:100%"> Axe
+    <input id="min_light" type="number" value="0" style="width:100%"> Light
+    <input id="min_heavy" type="number" value="0" style="width:100%"> Heavy
 
-        <label>Tvoje admin ID:</label><br>
-        <input id="inp_admin" style="width:100%"><br><br>
+    <button id="ft_run" style="width:100%;margin-top:8px">
+      OTVORIŤ TABY + AUTO FAKE (ALL UNITS)
+    </button>
+  `;
 
-        <button id="btn_generate">GENERUJ GITHUB BOOKMARKLET</button><br><br>
+  document.body.appendChild(box);
 
-        <textarea id="out_bookmark" rows="5" style="width:100%"></textarea>
+  function getFreePop(){
+    try{
+      const el = document.querySelector("#pop_current_label");
+      if(!el) return 120;
+      return parseInt(el.textContent.replace(/[^\d]/g,'')) || 120;
+    } catch { return 120; }
+  }
 
-        <p style="font-size:10px;color:gray;">
-        Skopíruj text vyššie a ulož ako záložku v prehliadači.
-        </p>
-    `;
+  document.getElementById("ft_run").onclick = () => {
+    const targets = (ft_targets.value.match(/\d+\|\d+/g) || []);
+    if(!targets.length) return alert("Žiadne ciele!");
 
-    document.body.appendChild(container);
-
-    /* ================================
-       3) FUNKCIA NA GENEROVANIE BOOKMARKLETU
-    ================================ */
-    function generateGithubBookmarklet(config) {
-
-        // pripravíme "fake" encryptedData len kvôli kompatibilite
-        const plainText =
-            `dropboxToken="GITHUB_MODE";` +
-            `databaseName="${config.databaseName}";` +
-            `runWorld=${config.worldNumber};` +
-            `adminBoss="${config.adminId}";` +
-            `fakeCoords="${config.fakeCoords}";` +
-            `githubRaw="${config.githubUrl}";`;
-
-        const encryptionKey = "automateThisAnnoyingPart";
-        const encrypted = CryptoJS.AES.encrypt(plainText, encryptionKey).toString();
-
-        // TOTO JE KĽÚČOVÁ ČASŤ — GitHub loader
-        const loader = `
-        (function(){
-            // PREPÍŠEME Dropbox volania na GitHub
-            window.__GITHUB_RAW_DB = "${config.githubUrl}";
-
-            // Zachytíme pokusy o načítanie Dropbox súborov
-            window.fetchDropboxFile = async function(path){
-                console.log("Redirecting Dropbox request to GitHub:", path);
-                const res = await fetch(window.__GITHUB_RAW_DB);
-                return await res.text();
-            };
-
-            // PREPÍŠEME AJAX volania Costache skriptu
-            const _origAjax = window.jQuery.ajax;
-            window.jQuery.ajax = function(opts){
-                if(opts.url && opts.url.includes("dropboxusercontent.com")){
-                    console.log("Intercepted Dropbox call -> GitHub");
-                    opts.url = window.__GITHUB_RAW_DB;
-                }
-                return _origAjax(opts);
-            };
-        })();
-        `;
-
-        // finálny bookmarklet
-        const bookmarklet =
-            "javascript:var encryptedData='" + encrypted + "';" +
-            encodeURIComponent(loader) + ";" +
-            "$.getScript('https://dl.dropboxusercontent.com/s/2q29vaqbibe6tph/fakeScriptMain.js?dl=0');void(0);";
-
-        return bookmarklet;
-    }
-
-    /* ================================
-       4) TLAČIDLO
-    ================================ */
-    document.getElementById("btn_generate").onclick = () => {
-
-        const githubUrl = document.getElementById("inp_github").value.trim();
-
-        if (!githubUrl.startsWith("https://raw.githubusercontent.com")) {
-            alert("MUSÍŠ zadať RAW GitHub URL (raw.githubusercontent.com)!");
-            return;
-        }
-
-        const cfg = {
-            fakeCoords: document.getElementById("inp_fake").value.trim(),
-            worldNumber: parseInt(document.getElementById("inp_world").value.trim()) || 0,
-            githubUrl: githubUrl,
-            databaseName: document.getElementById("inp_db").value.trim(),
-            adminId: document.getElementById("inp_admin").value.trim()
-        };
-
-        const bm = generateGithubBookmarklet(cfg);
-        document.getElementById("out_bookmark").value = bm;
+    const minUnits = {
+      spy: +min_spy.value || 1,
+      ram: +min_ram.value || 3,
+      cat: +min_cat.value || 5,
+      spear: +min_spear.value || 0,
+      axe: +min_axe.value || 0,
+      light: +min_light.value || 0,
+      heavy: +min_heavy.value || 0
     };
 
+    targets.forEach(t=>{
+      const url = `${game_data.link_base_pure}game.php?screen=place&mode=attack&target=${t}`;
+      const tab = window.open(url, "_blank");
+
+      const injector = `
+        (function(){
+          const POP = { spy:2, spear:1, axe:1, light:4, heavy:6, ram:5, catapult:8 };
+
+          function rand(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+          function getFreePop(){
+            try{
+              const el = document.querySelector("#pop_current_label");
+              if(!el) return 120;
+              return parseInt(el.textContent.replace(/[^0-9]/g,''))||120;
+            }catch{return 120;}
+          }
+
+          function fill(){
+            let u = {};
+            ["spy","ram","catapult","spear","axe","light","heavy"].forEach(x=>{
+              u[x] = document.querySelector('input[name="'+x+'"]');
+            });
+            if(Object.values(u).some(x=>!x)){return setTimeout(fill,300);}
+
+            let pop = getFreePop();
+            let remaining = pop;
+
+            // Minimálne jednotky
+            let minU = ${JSON.stringify(minUnits)};
+            Object.keys(minU).forEach(k=>{
+              u[k].value = minU[k];
+              remaining -= minU[k]*POP[k];
+            });
+
+            if(remaining<0) remaining = 0;
+
+            // Náhodne rozdelíme zostávajúci pop medzi všetky jednotky okrem spy/minUnits
+            let extraUnits = ["ram","catapult","spear","axe","light","heavy"];
+            extraUnits.forEach(k=>{
+              let maxAdd = Math.floor(remaining/POP[k]);
+              let add = rand(0,maxAdd);
+              u[k].value = parseInt(u[k].value)+add;
+              remaining -= add*POP[k];
+            });
+
+            console.log("AUTO FAKE ALL UNITS:", Object.fromEntries(Object.entries(u).map(([k,v])=>[k,v.value])));
+          }
+
+          setTimeout(fill,800);
+        })();
+      `;
+
+      setTimeout(()=>{tab.eval(injector)},1200);
+    });
+  };
 })();

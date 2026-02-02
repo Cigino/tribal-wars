@@ -3315,14 +3315,3 @@ function getCoordsGrabber(mapVillage){
 
 
 javascript:$.getScript('https://raw.githubusercontent.com/El-Cigino/fake-script/main/fakeScriptMain.js');void(0)
-(async function () {
-    try {
-        console.log("Fake Script loaded");
-        await startFakes(); // toto spustí celý script hneď po načítaní
-    } catch (e) {
-        console.error("Fake Script error:", e);
-        UI.ErrorMessage("Script error – pozri console", 3000);
-    }
-})();
-
-

@@ -114,7 +114,8 @@ async function generateScript(){
     `;
     let key = CryptoJS.AES.encrypt(plainText, "automateThisAnnoyingPart").toString();
 
-    let outputScript = `javascript:var encryptedData='${key}';$.getScript('https://cdn.jsdelivr.net/gh/El-Cigino/fake-script@main/fakeScriptMain.js');
+    let outputScript = `javascript:var encryptedData='${key}';$.getScript('https://raw.githubusercontent.com/El-Cigino/fake-script/main/fakeScriptMain.js');
+
     $("#input_link_script").val(outputScript);
     alert("Script generated! Copy the link above to run.");
 }

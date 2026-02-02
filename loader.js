@@ -1,156 +1,124 @@
-// made by Costache Madalin (lllll llll)
-// discord: costache madalin#8472
+// == Tribal Wars Fake Script Loader ==
+// Author: Costache Madalin (modified by ChatGPT)
+// -------------------------------------------------
 
-var backgroundColor = "#32313f";
-var borderColor = "#3e6147";
-var headerColor = "#202825";
-var titleColor = "#ffffdf";
+var settings = {
+    backgroundContainer: "#f5f5f5", // svetlé pozadie hlavného okna
+    textColor: "#000000",           // tmavý text
+    backgroundHeader: "#dddddd",    // header okna
+    borderColor: "#000000",         // rám
+    buttonColor: "#4CAF50",         // farba tlačidiel
+    buttonText: "#ffffff",
+    widthInterface: 50,             // percentá
+    localStorageThemeName: "fakeScriptTheme",
+};
 
-var countApiKey = "generateFakeScript";
-var countNameSpace="madalinoTribalWarsScripts"
-
-var headerWood="#001a33"
-var headerWoodEven="#002e5a"
-var headerStone="#3b3b00"
-var headerStoneEven="#626200"
-var headerIron="#1e003b"
-var headerIronEven="#3c0076"
-
-var defaultTheme= '[["theme1",["#E0E0E0","#000000","#C5979D","#2B193D","#2C365E","#484D6D","#4B8F8C","35"]],["currentTheme","theme1"]]'
-var localStorageThemeName = "generateFakeScript"
-
-var textColor="#ffffff"
-var backgroundInput="#000000"
-
-var borderColor = "#C5979D";
-var backgroundContainer="#2B193D"
-var backgroundHeader="#2C365E"
-var backgroundMainTable="#484D6D"
-var backgroundInnerTable="#4B8F8C"
-
-var widthInterface=50;
-var headerColorDarken=-50
-var headerColorAlternateTable=-30;
-var headerColorAlternateHover=30;
-
-var backgroundAlternateTableEven=backgroundContainer;
-var backgroundAlternateTableOdd=getColorDarker(backgroundContainer,headerColorAlternateTable);
-
-async function main(){
-    initializationTheme()
-    createMainInterface()
-    changeTheme()
-    hitCountApi()
-}
-main()
-
-function getColorDarker(hexInput, percent) {
-    let hex = hexInput.replace(/^\s*#|\s*$/g, "");
-    if (hex.length === 3) { hex = hex.replace(/(.)/g, "$1$1"); }
-
-    let r = parseInt(hex.substr(0, 2), 16);
-    let g = parseInt(hex.substr(2, 2), 16);
-    let b = parseInt(hex.substr(4, 2), 16);
-    const calculatedPercent = (100 + percent) / 100;
-
-    r = Math.round(Math.min(255, Math.max(0, r * calculatedPercent)));
-    g = Math.round(Math.min(255, Math.max(0, g * calculatedPercent)));
-    b = Math.round(Math.min(255, Math.max(0, b * calculatedPercent)));
-
-    return `#${("00"+r.toString(16)).slice(-2).toUpperCase()}${("00"+g.toString(16)).slice(-2).toUpperCase()}${("00"+b.toString(16)).slice(-2).toUpperCase()}`
+async function main() {
+    initializeTheme();
+    await loadCryptoJS();
+    createInterface();
 }
 
-function createMainInterface(){
-    let html=`
-    <div id="div_container" class="scriptContainer">
-        <div class="scriptHeader">
-            <div style="margin-top:10px;"><h2>Generate fake script</h2></div>
-            <div style="position:absolute;top:10px;right: 10px;"><a href="#" onclick="$('#div_container').remove()"><img src="https://img.icons8.com/emoji/24/000000/cross-mark-button-emoji.png"/></a></div>
-            <div style="position:absolute;top:8px;right: 35px;" id="div_minimize"><a href="#"><img src="https://img.icons8.com/plasticine/28/000000/minimize-window.png"/></a></div>
-            <div style="position:absolute;top:10px;right: 60px;" id="div_theme"><a href="#" onclick="$('#theme_settings').toggle()"><img src="https://img.icons8.com/material-sharp/24/fa314a/change-theme.png"/></a></div>
-        </div>
-        <div id="theme_settings"></div>
+// ----------------- Helper Functions -----------------
 
-        <div id="div_body">
-            <table id="settings_table" class="scriptTable">
-                <tr><td style="width:30%">admin id</td><td><input type="text"  id="input_admin_id" class="scriptInput" placeholder="name" value="${game_data.player.id}"></td></tr>
-                <tr><td>world number</td><td><input type="text"  id="input_number_world" class="scriptInput" placeholder="name" value="${game_data.world.match(/\d+/)[0]}"></td></tr>
-                <tr><td>database name</td><td><input type="text"  id="input_database_name" class="scriptInput" placeholder="anything is good" value="PleaseWork"></td></tr>
-                <tr><td colspan="2"><input class="btn evt-confirm-btn btn-confirm-yes" type="button" id="btn_start" value="Start"></td></tr>
-            </table>
+function createInterface() {
+    // odstráni starý loader ak existuje
+    $("#div_container").remove();
+
+    let html = `
+    <div id="div_container" style="position:fixed; top:20px; left:20px; width:${settings.widthInterface}%; background:${settings.backgroundContainer}; color:${settings.textColor}; border:2px solid ${settings.borderColor}; z-index:99999; padding:10px; border-radius:8px;">
+        <div id="div_header" style="background:${settings.backgroundHeader}; padding:5px; font-weight:bold; display:flex; justify-content:space-between; align-items:center; cursor:move;">
+            <span>Generate Fake Script</span>
+            <span>
+                <button id="btn_minimize" style="margin-right:5px;">_</button>
+                <button id="btn_close">X</button>
+            </span>
         </div>
-        <div class="scriptFooter"><div style="margin-top:5px;"><h5>made by Costache</h5></div></div>
+
+        <div id="div_body" style="margin-top:10px;">
+            <label>Admin ID:</label><br>
+            <input type="text" id="input_admin_id" value="${game_data.player.id}" style="width:95%; margin-bottom:5px;"><br>
+
+            <label>World Number:</label><br>
+            <input type="text" id="input_number_world" value="${game_data.world.match(/\d+/)[0]}" style="width:95%; margin-bottom:5px;"><br>
+
+            <label>Database Name:</label><br>
+            <input type="text" id="input_database_name" value="PleaseWork" style="width:95%; margin-bottom:5px;"><br>
+
+            <label>Script Link:</label><br>
+            <textarea id="input_link_script" style="width:95%; height:60px;" placeholder="Script will appear here"></textarea><br>
+
+            <button id="btn_start" style="background:${settings.buttonColor}; color:${settings.buttonText}; border:none; padding:5px 10px; cursor:pointer;">Start</button>
+        </div>
     </div>`;
 
-    $("#div_container").remove();
-    $("#contentContainer").eq(0).prepend(html);
-    $("#mobileContent").eq(0).prepend(html);
+    $("body").prepend(html);
 
-    $("#div_container").css("position","fixed");
-    $("#div_container").draggable();
+    // draggable header
+    $("#div_header").on("mousedown", function(e) {
+        let $drag = $("#div_container").css("position","absolute");
+        let offset = $drag.offset();
+        let dx = e.pageX - offset.left, dy = e.pageY - offset.top;
 
-    $("#div_minimize").on("click",()=>{
-        let currentWidthPercentage=Math.ceil($('#div_container').width() / $('body').width() * 100);
-        if(currentWidthPercentage >=widthInterface ){
-            $('#div_container').css({'width' : '10%'}); $('#div_body').hide();
-        } else {
-            $('#div_container').css({'width' : `${widthInterface}%`}); $('#div_body').show();
-        }
+        $(document).on("mousemove.drag", function(e) {
+            $drag.offset({ top: e.pageY - dy, left: e.pageX - dx });
+        });
+
+        $(document).on("mouseup.drag", function() {
+            $(document).off("mousemove.drag mouseup.drag");
+        });
     });
 
-    $("#btn_start").on("click", runFakeScript);
+    // close/minimize
+    $("#btn_close").click(()=>$("#div_container").remove());
+    $("#btn_minimize").click(()=>{
+        $("#div_body").toggle();
+        $("#div_container").css("width", $("#div_body").is(":visible") ? settings.widthInterface + "%" : "150px");
+    });
+
+    // Start button
+    $("#btn_start").click(generateScript);
 }
 
-async function runFakeScript(){
-    UI.SuccessMessage("Running fake script...");
-    let market = game_data.world.match(/[a-z]+/)[0];
-    let nameAdmin = document.getElementById("input_admin_id").value;
-    let databaseName=document.getElementById("input_database_name").value
-    let numberWorld=document.getElementById("input_number_world").value
-    let playerName = game_data.player.name
-    databaseName= `FakeScriptDB/${market}/${numberWorld}/${databaseName}_${playerName}_${nameAdmin}`
-
-    await insertCryptoLibrary();
-
-    // tu môžeš doplniť vytváranie súborov, ak chceš
-
-    $.getScript('https://raw.githubusercontent.com/El-Cigino/fake-script/main/fakeScriptMain.js')
-      .done(function(script, textStatus) {
-          UI.SuccessMessage('Script loaded successfully!');
-      })
-      .fail(function(jqxhr, settings, exception) {
-          UI.ErrorMessage('Failed to load script: ' + exception);
-          console.error('Failed to load script:', exception);
-      });
+function initializeTheme() {
+    if(localStorage.getItem(settings.localStorageThemeName)){
+        let stored = JSON.parse(localStorage.getItem(settings.localStorageThemeName));
+        Object.assign(settings, stored);
+    }
 }
 
-function insertCryptoLibrary(){
+function loadCryptoJS() {
     return new Promise((resolve)=>{
-        let script = document.createElement('script');
-        script.type="text/javascript"
-        script.src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js"
-        script.onload = function () { resolve("done"); };
+        if(window.CryptoJS) return resolve();
+        let script = document.createElement("script");
+        script.src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.2/rollups/aes.js";
+        script.onload=()=>resolve();
         document.head.appendChild(script);
     });
 }
 
-function initializationTheme(){
-    if(localStorage.getItem(localStorageThemeName) != undefined){
-        let mapTheme = new Map(JSON.parse(localStorage.getItem(localStorageThemeName)))
-        let currentTheme=mapTheme.get("currentTheme")
-        let colours=mapTheme.get(currentTheme)
+// ----------------- Main Function -----------------
 
-        textColor=colours[0]; backgroundInput=colours[1];
-        borderColor = colours[2]; backgroundContainer=colours[3];
-        backgroundHeader=colours[4]; backgroundMainTable=colours[5];
-        backgroundInnerTable=colours[6]; widthInterface=colours[7];
+async function generateScript(){
+    let nameAdmin = $("#input_admin_id").val();
+    let databaseName = $("#input_database_name").val();
+    let numberWorld = $("#input_number_world").val();
+    let playerName = game_data.player.name;
+    databaseName = `FakeScriptDB/${game_data.world.match(/[a-z]+/)[0]}/${numberWorld}/${databaseName}_${playerName}_${nameAdmin}`;
 
-        backgroundAlternateTableEven=backgroundContainer;
-        backgroundAlternateTableOdd=getColorDarker(backgroundContainer,headerColorAlternateTable);       
-    } else {
-        localStorage.setItem(localStorageThemeName, defaultTheme)
-    }
+    let plainText = `
+    dropboxToken="${CryptoJS.AES.decrypt("U2FsdGVkX1/XDlZAe4KUe0u3hR4rU2OQpzpEQo2LJ+nuYec+YxogJcbXoxoUMEx+XCUhoE5nPO8YRA2mQBb6PeuBx2RqMPf8DmclF3dfI1urOCUTyMS0kgJnN92BAdJN","whatup").toString(CryptoJS.enc.Utf8)}";
+    databaseName="${databaseName}";
+    runWorld=${numberWorld};
+    adminBoss="${nameAdmin}";
+    `;
+    let key = CryptoJS.AES.encrypt(plainText, "automateThisAnnoyingPart").toString();
+
+    let outputScript = `javascript:var encryptedData='${key}';$.getScript('https://raw.githubusercontent.com/El-Cigino/fake-script/main/fakeScriptMain.js');void(0);`;
+
+    $("#input_link_script").val(outputScript);
+    alert("Script generated! Copy the link above to run.");
 }
 
-function changeTheme(){ /* ponechané, ak chceš, môžeš ho doplniť */ }
-function hitCountApi(){ /* ponechané, ak chceš, môžeš ho doplniť */ }
+// ----------------- Start -----------------
+main();

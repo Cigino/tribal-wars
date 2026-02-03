@@ -1,49 +1,30 @@
-// == Tribal Wars Fake Script Loader ==
-// Author: Cigino (clean version)
+```js
+// ===========================
+//  GITHUB + FIREBASE LOADER
+// ===========================
 
-(async function () {
-    try {
-        console.log("[FakeScript] Loader started");
+var GITHUB_USER = "Cigino";   // ← TU ZMENÍŠ
+var REPO_NAME   = "triwal-wars";       // ← TU ZMENÍŠ (názov repo)
 
-        // --- CONFIG ---
-        const MAIN_SCRIPT_URL =
-            "https://raw.githubusercontent.com/El-Cigino/fake-script/main/fakeScriptMain.js";
+function gh(path){
+  return `https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/main/scripts/${path}`;
+}
 
-        // --- LOAD CRYPTO ---
-        if (!window.CryptoJS) {
-            await new Promise(resolve => {
-                const s = document.createElement("script");
-                s.src = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js";
-                s.onload = resolve;
-                document.head.appendChild(s);
-            });
-        }
+async function main(){
+  initializationTheme();
 
-        // --- BUILD ENCRYPTED DATA ---
-        const plainText = `
-            runWorld=${game_data.world.match(/\d+/)[0]};
-            adminBoss="${game_data.player.id}";
-            databaseName="FakeScriptDB/${game_data.world}/${game_data.player.name}";
-        `;
+  // Načítame všetko z GitHubu (NIE z Dropboxu)
+  await $.getScript(gh("styleCSSGlobal.js"));
+  await $.getScript(gh("firebaseStorage.js"));
+  await $.getScript(gh("fakemain.js"));
 
-        window.encryptedData = CryptoJS.AES.encrypt(
-            plainText,
-            "automateThisAnnoyingPart"
-        ).toString();
+  // Inicializujeme Firebase
+  await initFirebase();
 
-        console.log("[FakeScript] encryptedData ready");
+  createMainInterface();
+  changeTheme();
+  hitCountApi();
+}
 
-        // --- LOAD MAIN SCRIPT ---
-        await new Promise((resolve, reject) => {
-            $.getScript(MAIN_SCRIPT_URL)
-                .done(resolve)
-                .fail(reject);
-        });
-
-        console.log("[FakeScript] Main script loaded");
-
-    } catch (e) {
-        console.error("[FakeScript] Loader error:", e);
-        UI.ErrorMessage("Loader error – pozri console", 4000);
-    }
-})();
+main();
+```

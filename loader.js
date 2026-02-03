@@ -5,13 +5,12 @@
 // ===============================
 
 (function () {
-    if (typeof firebase !== "undefined") {
-        console.warn("Firebase already loaded");
+
+    if (window.firebase && firebase.apps && firebase.apps.length) {
+        console.warn("[TW] Firebase already loaded");
         loadMain();
         return;
     }
-
-    const FIREBASE_VERSION = "9.23.0";
 
     function loadScript(src) {
         return new Promise((resolve, reject) => {
@@ -24,9 +23,26 @@
     }
 
     async function initFirebase() {
-        await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app-compat.js`);
-        await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore-compat.js`);
+        // 🔥 STABILNÁ VERZIA
+        await loadScript("https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js");
+        await loadScript("https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js");
     }
+
+    function loadMain() {
+        const script = document.createElement("script");
+        script.src = "https://raw.githubusercontent.com/Cigino/tribal-wars/main/fakeScriptMain.js";
+        script.type = "text/javascript";
+        document.body.appendChild(script);
+    }
+
+    async function start() {
+        console.log("[TW] Loader starting…");
+        await initFirebase();
+        loadMain();
+    }
+
+    start();
+})();
 
     function loadMain() {
         const script = document.createElement("script");

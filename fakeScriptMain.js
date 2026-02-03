@@ -44,6 +44,23 @@
     // 3. FIRESTORE HELPERS
     // --------------------------------------------------
     const WorldRef = db.collection("worlds").doc(WORLD_ID);
+    async getSettings() {
+    const ref = WorldRef.collection("settings").doc("general");
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+        await ref.set(DEFAULT_SETTINGS);
+        return { ...DEFAULT_SETTINGS };
+    }
+    return { ...DEFAULT_SETTINGS, ...snap.data() };
+},
+
+async saveSettings(data) {
+    return WorldRef.collection("settings")
+        .doc("general")
+        .set(data, { merge: true });
+}
+
 
     const api = {
         async ensureWorld() {
@@ -178,6 +195,9 @@
 
         const updatedTabs = await api.getTabs();
         renderTabs(updatedTabs, isAdmin);
+        const settings = await api.getSettings();
+renderSettings(settings, isAdmin);
+
     }
 
     main().catch(err => {
@@ -210,6 +230,11 @@ const DEFAULT_TEMPLATES = {
 async getTemplates() {
     const ref = WorldRef.collection("settings").doc("templates");
     const snap = await ref.get();
+    const DEFAULT_SETTINGS = {
+    delay: 800,      // ms medzi tabmi
+    fakeLimit: 10    // max počet cieľov
+};
+
 
     if (!snap.exists) {
         await ref.set(DEFAULT_TEMPLATES);
@@ -266,7 +291,151 @@ function renderModeSelector(templates, isAdmin) {
 
     document.getElementById("mode-nuke").onclick =
         () => renderTemplateEditor("nuke", templates, isAdmin);
+    function openPlaceTab(coord) {
+    const [x, y] = coord.split("|");
+    const url = `${game_data.link_base_pure}place&x=${x}&y=${y}`;
+    return window.open(url, "_blank");
+}
+function fillTroopsInWindow(win, template) {
+    const interval = setInterval(() => {
+        try {
+            if (!win || win.closed) {
+                clearInterval(interval);
+                return;
+            }
+
+            const doc = win.document;
+            const form = doc.querySelector("#command-data-form");
+            if (!form) return;
+
+            Object.entries(template).forEach(([unit, count]) => {
+                const input = doc.querySelector(`input[name="${unit}"]`);
+                if (input && count > 0) {
+                    input.value = count;
+                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+            });
+
+            clearInterval(interval);
+        } catch (e) {
+            // čakáme kým sa tab úplne načíta
+        }
+    }, 300);
+}
+async function startOpenTabsWithTroops({ mode, tabId }) {
+    const tabs = await api.getTabs();
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) {
+        UI.ErrorMessage("Tab not found");
+        return;
+    }
+
+    let coords = parseCoords(tab.coords);
+    if (!coords.length) {
+        UI.ErrorMessage("No valid coords");
+        return;
+    }
+
+    const templates = await api.getTemplates();
+    const template = templates[mode];
+
+    const settings = await api.getSettings();
+    const delay = settings.delay;
+    const limit = settings.fakeLimit;
+
+    coords = coords.slice(0, limit);
+
+    UI.SuccessMessage(
+        `Opening ${coords.length} tabs (${mode.toUpperCase()})`
+    );
+
+    let index = 0;
+
+    function next() {
+        if (index >= coords.length) return;
+
+        const coord = coords[index++];
+        const win = openPlaceTab(coord);
+        fillTroopsInWindow(win, template);
+
+        setTimeout(next, delay);
+    }
+
+    next();
+}
+
+    }
+
+    const coords = parseCoords(tab.coords);
+    if (!coords.length) {
+        UI.ErrorMessage("No valid coords");
+        return;
+    }
+
+    const templates = await api.getTemplates();
+    const template = templates[mode];
+
+    UI.SuccessMessage(
+        `Opening ${coords.length} tabs (${mode.toUpperCase()})`
+    );
+
+    coords.forEach(coord => {
+        const win = openPlaceTab(coord);
+        fillTroopsInWindow(win, template);
+    });
+}
+function renderStartButtons(tabId) {
+    const body = document.getElementById("tw-body");
+
+    body.insertAdjacentHTML("beforeend", `
+        <hr>
+        <button id="start-fake">OPEN FAKES</button>
+        <button id="start-nuke">OPEN NUKES</button>
+    `);
+
+    document.getElementById("start-fake").onclick =
+        () => startOpenTabsWithTroops({ mode: "fake", tabId });
+
+    document.getElementById("start-nuke").onclick =
+        () => startOpenTabsWithTroops({ mode: "nuke", tabId });
+}
+
 }
 const templates = await api.getTemplates();
 renderModeSelector(templates, isAdmin);
 renderTemplateEditor("fake", templates, isAdmin);
+function renderSettings(settings, isAdmin) {
+    const body = document.getElementById("tw-body");
+
+    body.insertAdjacentHTML("beforeend", `
+        <hr>
+        <h3>START SETTINGS</h3>
+
+        <div>
+            Delay (ms):
+            <input id="tw-delay" type="number" value="${settings.delay}" style="width:80px">
+        </div>
+
+        <div>
+            Fake limit:
+            <input id="tw-limit" type="number" value="${settings.fakeLimit}" style="width:80px">
+        </div>
+
+        ${isAdmin ? `<button id="save-settings">Save settings</button>` : ""}
+    `);
+
+    if (isAdmin) {
+        document.getElementById("save-settings").onclick = async () => {
+            const delay = Number(document.getElementById("tw-delay").value);
+            const fakeLimit = Number(document.getElementById("tw-limit").value);
+
+            await api.saveSettings({
+                delay: Math.max(0, delay),
+                fakeLimit: Math.max(1, fakeLimit)
+            });
+
+            UI.SuccessMessage("Settings saved");
+        };
+    }
+}
+

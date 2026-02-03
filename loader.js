@@ -1,30 +1,45 @@
-```js
-// ===========================
-//  GITHUB + FIREBASE LOADER
-// ===========================
+// ===============================
+// Tribal Wars – Loader
+// Author: Cigino
+// Repo: https://github.com/Cigino/tribal-wars
+// ===============================
 
-var GITHUB_USER = "Cigino";   // ← TU ZMENÍŠ
-var REPO_NAME   = "triwal-wars";       // ← TU ZMENÍŠ (názov repo)
+(function () {
+    if (typeof firebase !== "undefined") {
+        console.warn("Firebase already loaded");
+        loadMain();
+        return;
+    }
 
-function gh(path){
-  return `https://raw.githubusercontent.com/${GITHUB_USER}/${REPO_NAME}/main/scripts/${path}`;
-}
+    const FIREBASE_VERSION = "9.23.0";
 
-async function main(){
-  initializationTheme();
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
 
-  // Načítame všetko z GitHubu (NIE z Dropboxu)
-  await $.getScript(gh("styleCSSGlobal.js"));
-  await $.getScript(gh("firebaseStorage.js"));
-  await $.getScript(gh("fakemain.js"));
+    async function initFirebase() {
+        await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app-compat.js`);
+        await loadScript(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore-compat.js`);
+    }
 
-  // Inicializujeme Firebase
-  await initFirebase();
+    function loadMain() {
+        const script = document.createElement("script");
+        script.src = "https://raw.githubusercontent.com/Cigino/tribal-wars/main/fakeScriptMain.js";
+        script.type = "text/javascript";
+        document.body.appendChild(script);
+    }
 
-  createMainInterface();
-  changeTheme();
-  hitCountApi();
-}
+    async function start() {
+        console.log("[TW] Loader starting…");
+        await initFirebase();
+        loadMain();
+    }
 
-main();
-```
+    start();
+})();

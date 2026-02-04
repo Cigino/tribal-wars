@@ -36,44 +36,45 @@ main();
 // ===================== UI (rovnaké ako Costache) =====================
 
 function createMainInterface(){
-    let html=`
-    <div id="div_container" class="scriptContainer">
-        <div class="scriptHeader">
-            <h2>Generate fake script (NO DROPBOX)</h2>
-        </div>
-        <div id="div_body">
-            <table class="scriptTable">
-                <tr>
-                    <td>admin id</td>
-                    <td><input id="input_admin_id" value="${game_data.player.id}"></td>
-                </tr>
-                <tr>
-                    <td>world</td>
-                    <td><input id="input_number_world" value="${game_data.world.match(/\\d+/)[0]}"></td>
-                </tr>
-                <tr>
-                    <td>database</td>
-                    <td><input id="input_database_name" value="PleaseWork"></td>
-                </tr>
-                <tr>
-                    <td>link script</td>
-                    <td><textarea id="input_link_script" cols="40" rows="8"></textarea></td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <input class="btn evt-confirm-btn btn-confirm-yes"
-                        type="button"
-                        id="btn_start"
-                        onclick="generateScript()"
-                        value="Start">
-                    </td>
-                </tr>
-            </table>
-        </div>
-    </div>`;
+let html=`
+<div id="div_container" class="scriptContainer"
+style="position:fixed; top:100px; left:100px; z-index:999999;">
+<div class="scriptHeader">
+<h2>Generate fake script (NO DROPBOX)</h2>
+</div>
+<div id="div_body">
+<table class="scriptTable">
+<tr>
+<td>admin id</td>
+<td><input id="input_admin_id" value="${game_data.player.id}"></td>
+</tr>
+<tr>
+<td>world</td>
+<td><input id="input_number_world" value="${game_data.world.match(/\\d+/)[0]}"></td>
+</tr>
+<tr>
+<td>database</td>
+<td><input id="input_database_name" value="PleaseWork"></td>
+</tr>
+<tr>
+<td>link script</td>
+<td><textarea id="input_link_script" cols="40" rows="8"></textarea></td>
+</tr>
+<tr>
+<td colspan="2">
+<input class="btn evt-confirm-btn btn-confirm-yes"
+type="button"
+id="btn_start"
+onclick="generateScript()"
+value="Start">
+</td>
+</tr>
+</table>
+</div>
+</div>`;
 
-    $("#div_container").remove();
-    $("#contentContainer").eq(0).prepend(html);
+$("#div_container").remove();
+$("body").append(html);
     $("#div_container").css("position","fixed");
     $("#div_container").draggable();
 }

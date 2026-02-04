@@ -1,43 +1,62 @@
-// ===============================
-// Tribal Wars – Loader
-// Author: Cigino
-// Repo: https://github.com/Cigino/tribal-wars
-// ===============================
+// made by Costache Madalin (lllll llll)
+// modified only to replace Dropbox with GitHub
+// repo: https://github.com/Cigino/tribal-wars
 
-(function () {
+var backgroundColor = "#32313f";
+var borderColor = "#3e6147";
+var headerColor = "#202825";
+var titleColor = "#ffffdf";
 
-    function loadScript(src) {
-        return new Promise((resolve, reject) => {
-            const s = document.createElement("script");
-            s.src = src;
-            s.onload = resolve;
-            s.onerror = reject;
-            document.head.appendChild(s);
-        });
-    }
+var countApiKey = "generateFakeScript";
+var countNameSpace="madalinoTribalWarsScripts";
 
-    async function initFirebase() {
-        if (window.firebase && firebase.apps && firebase.apps.length) {
-            console.warn("[TW] Firebase already loaded");
-            return;
-        }
+var defaultTheme='[["theme1",["#E0E0E0","#000000","#C5979D","#2B193D","#2C365E","#484D6D","#4B8F8C","35"]],["currentTheme","theme1"]]';
+var localStorageThemeName = "generateFakeScript";
 
-        await loadScript("https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js");
-        await loadScript("https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js");
-    }
+var textColor="#ffffff";
+var backgroundInput="#000000";
+var backgroundContainer="#2B193D";
+var backgroundHeader="#2C365E";
+var backgroundMainTable="#484D6D";
+var backgroundInnerTable="#4B8F8C";
+var widthInterface=50;
 
-    function loadMain() {
-        const script = document.createElement("script");
-        script.src = "https://raw.githubusercontent.com/Cigino/tribal-wars/main/fakeScriptMain.js";
-        script.type = "text/javascript";
-        document.body.appendChild(script);
-    }
+async function main(){
+    initializationTheme();
 
-    async function start() {
-        console.log("[TW] Loader starting…");
-        await initFirebase();
-        loadMain();
-    }
+    // 🔥 DROPBOX → GITHUB
+    await $.getScript(
+        "https://raw.githubusercontent.com/Cigino/tribal-wars/main/styleCSSGlobal.js"
+    );
 
-    start();
-})();
+    createMainInterface();
+    changeTheme();
+    hitCountApi();
+}
+main();
+
+function createMainInterface(){
+    let html=`
+    <div id="div_container" class="scriptContainer">
+        <div class="scriptHeader">
+            <h2>Generate fake script</h2>
+        </div>
+        <div id="div_body">
+            <table class="scriptTable">
+                <tr>
+                    <td>admin id</td>
+                    <td><input id="input_admin_id" value="${game_data.player.id}"></td>
+                </tr>
+                <tr>
+                    <td>world</td>
+                    <td><input id="input_number_world" value="${game_data.world.match(/\d+/)[0]}"></td>
+                </tr>
+                <tr>
+                    <td>database</td>
+                    <td><input id="input_database_name" value="PleaseWork"></td>
+                </tr>
+                <tr>
+                    <td>link script</td>
+                    <td><textarea id="input_link_script"></textarea></td>
+                </tr>
+                <tr>

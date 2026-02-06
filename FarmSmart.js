@@ -1,224 +1,1056 @@
-// ==UserScript==
-// @name         FarmSmart (DK)
-// @version      0.1
-// @description  Inteligentné farmenie s A/B/C logikou a cooldownom
-// @match        https://*.divokekmeny.sk/*
-// @match        https://*.tribalwars.net/*
-// @match        https://*.tribalwars.com/*
-// ==/UserScript==
+ScriptAPI.register('FarmGod', true, 'Warre', 'nl.tribalwars@coma.innogames.de');
 
-javascript:(function(){
-'use strict';
-
-try {
-console.log('[FarmSmart] START');
-
-/************************************************************
- * 1) ZÁKLADNÁ KONTROLA PROSTREDIA
- ************************************************************/
-if (typeof window.game_data === 'undefined') {
-    alert('Spusť skript priamo v hre Divoké kmene.');
-    return;
-}
-
-/************************************************************
- * 2) IDENTITA – KĽÚČ PRE ODDDELENÚ DB PODĽA SVETA
- ************************************************************/
-const DK = {
-    server: location.hostname,
-    world: game_data.world,
-    village: game_data.village.coord,
-    now: () => Date.now()
-};
-
-const DB_KEY = `FARMSMART_${DK.server}_${DK.world}`;
-
-/************************************************************
- * 3) DATABÁZA (LOCALSTORAGE)
- ************************************************************/
-const DB = {
-    data: null,
-
-    load() {
-        const raw = localStorage.getItem(DB_KEY);
-        this.data = raw ? JSON.parse(raw) : {};
-
-        if (!this.data.villages) this.data.villages = {};
-
-        if (!this.data.settings) {
-            this.data.settings = {
-                cooldownMin: 1,     // globálny cooldown (minúty)
-                maxDistance: 15,    // (zatiaľ len pre budúce rozšírenie)
-
-                // Jednotky (bude editovateľné v ďalšej verzii)
-                unitsA: { light: 2 },
-                unitsB: { light: 3 },
-                unitsC: { light: 6, ram: 2 }
-            };
+window.FarmGod = {};
+window.FarmGod.Library = (function () {
+  /**** TribalWarsLibrary.js ****/
+  if (typeof window.twLib === 'undefined') {
+    window.twLib = {
+      queues: null,
+      init: function () {
+        if (this.queues === null) {
+          this.queues = this.queueLib.createQueues(5);
         }
-        this.save();
-    },
+      },
+      queueLib: {
+        maxAttempts: 3,
+        Item: function (action, arg, promise = null) {
+          this.action = action;
+          this.arguments = arg;
+          this.promise = promise;
+          this.attempts = 0;
+        },
+        Queue: function () {
+          this.list = [];
+          this.working = false;
+          this.length = 0;
 
-    save() {
-        localStorage.setItem(DB_KEY, JSON.stringify(this.data));
-    },
+          this.doNext = function () {
+            let item = this.dequeue();
+            let self = this;
 
-    getVillage(coord) {
-        if (!this.data.villages[coord]) {
-            this.data.villages[coord] = {
-                state: "ACTIVE",   // ACTIVE | NEED_C | BLOCKED
-                lastAttack: 0,
-                nextPattern: "A"   // A | B | C
-            };
-            this.save();
-        }
-        return this.data.villages[coord];
-    },
+            if (item.action == 'openWindow') {
+              window
+                .open(...item.arguments)
+                .addEventListener(
+                  'DOMContentLoaded',
+                  function () {
+                    self.start();
+                  }
+                );
+            } else {
+              $[item.action](...item.arguments)
+                .done(function () {
+                  item.promise.resolve.apply(null, arguments);
+                  self.start();
+                })
+                .fail(function () {
+                  item.attempts += 1;
+                  if (
+                    item.attempts <
+                    twLib.queueLib.maxAttempts
+                  ) {
+                    self.enqueue(item, true);
+                  } else {
+                    item.promise.reject.apply(
+                      null,
+                      arguments
+                    );
+                  }
 
-    countVillages() {
-        return Object.keys(this.data.villages).length;
+                  self.start();
+                });
+            }
+          };
+
+          this.start = function () {
+            if (this.length) {
+              this.working = true;
+              this.doNext();
+            } else {
+              this.working = false;
+            }
+          };
+
+          this.dequeue = function () {
+            this.length -= 1;
+            return this.list.shift();
+          };
+
+          this.enqueue = function (item, front = false) {
+            front ? this.list.unshift(item) : this.list.push(item);
+            this.length += 1;
+
+            if (!this.working) {
+              this.start();
+            }
+          };
+        },
+        createQueues: function (amount) {
+          let arr = [];
+
+          for (let i = 0; i < amount; i++) {
+            arr[i] = new twLib.queueLib.Queue();
+          }
+
+          return arr;
+        },
+        addItem: function (item) {
+          let leastBusyQueue = twLib.queues
+            .map((q) => q.length)
+            .reduce((next, curr) => (curr < next ? curr : next), 0);
+          twLib.queues[leastBusyQueue].enqueue(item);
+        },
+        orchestrator: function (type, arg) {
+          let promise = $.Deferred();
+          let item = new twLib.queueLib.Item(type, arg, promise);
+
+          twLib.queueLib.addItem(item);
+
+          return promise;
+        },
+      },
+      ajax: function () {
+        return twLib.queueLib.orchestrator('ajax', arguments);
+      },
+      get: function () {
+        return twLib.queueLib.orchestrator('get', arguments);
+      },
+      post: function () {
+        return twLib.queueLib.orchestrator('post', arguments);
+      },
+      openWindow: function () {
+        let item = new twLib.queueLib.Item('openWindow', arguments);
+
+        twLib.queueLib.addItem(item);
+      },
+    };
+
+    twLib.init();
+  }
+
+  /**** Script Library ****/
+  const setUnitSpeeds = function () {
+    let unitSpeeds = {};
+
+    $.when($.get('/interface.php?func=get_unit_info')).then((xml) => {
+      $(xml)
+        .find('config')
+        .children()
+        .map((i, el) => {
+          unitSpeeds[$(el).prop('nodeName')] = $(el)
+            .find('speed')
+            .text()
+            .toNumber();
+        });
+
+      localStorage.setItem(
+        'FarmGod_unitSpeeds',
+        JSON.stringify(unitSpeeds)
+      );
+    });
+  };
+
+  const getUnitSpeeds = function () {
+    return JSON.parse(localStorage.getItem('FarmGod_unitSpeeds')) || false;
+  };
+
+  if (!getUnitSpeeds()) setUnitSpeeds();
+
+  const determineNextPage = function (page, $html) {
+    let villageLength =
+      $html.find('#scavenge_mass_screen').length > 0
+        ? $html.find('tr[id*="scavenge_village"]').length
+        : $html.find('tr.row_a, tr.row_ax, tr.row_b, tr.row_bx').length;
+    let navSelect = $html
+      .find('.paged-nav-item')
+      .first()
+      .closest('td')
+      .find('select')
+      .first();
+    let navLength =
+      $html.find('#am_widget_Farm').length > 0
+        ? parseInt(
+          $('#plunder_list_nav')
+            .first()
+            .find('a.paged-nav-item, strong.paged-nav-item')
+          [
+            $('#plunder_list_nav')
+              .first()
+              .find(
+                'a.paged-nav-item, strong.paged-nav-item'
+              ).length - 1
+          ].textContent.replace(/\D/g, '')
+        ) - 1
+        : navSelect.length > 0
+          ? navSelect.find('option').length - 1
+          : $html.find('.paged-nav-item').not('[href*="page=-1"]').length;
+    let pageSize =
+      $('#mobileHeader').length > 0
+        ? 10
+        : parseInt($html.find('input[name="page_size"]').val());
+
+    if (page == -1 && villageLength == 1000) {
+      return Math.floor(1000 / pageSize);
+    } else if (page < navLength) {
+      return page + 1;
     }
-};
 
-DB.load();
+    return false;
+  };
 
-/************************************************************
- * 4) GLOBÁLNY COOLDAWN
- ************************************************************/
-function inCooldown(v) {
-    const ms = DB.data.settings.cooldownMin * 60 * 1000;
-    return (DK.now() - v.lastAttack) < ms;
-}
+  const processPage = function (url, page, wrapFn) {
+    let pageText = url.match('am_farm')
+      ? `&Farm_page=${page}`
+      : `&page=${page}`;
 
-/************************************************************
- * 5) PANEL S NASTAVENIAMI (VŽDY SA VYTVORÍ)
- ************************************************************/
-const old = document.getElementById('farmsmart_panel');
-if (old) old.remove();
+    return twLib
+      .ajax({
+        url: url + pageText,
+      })
+      .then((html) => {
+        return wrapFn(page, $(html));
+      });
+  };
 
-const panel = document.createElement('div');
-panel.id = 'farmsmart_panel';
-panel.style.cssText = `
-    position:fixed;
-    top:110px;
-    right:10px;
-    background:#222;
-    color:#fff;
-    padding:10px;
-    z-index:999999;
-    font-size:12px;
-    border-radius:6px;
-    box-shadow:0 0 6px #000;
-    font-family: Arial, sans-serif;
-`;
+  const processAllPages = function (url, processorFn) {
+    let page = url.match('am_farm') || url.match('scavenge_mass') ? 0 : -1;
+    let wrapFn = function (page, $html) {
+      let dnp = determineNextPage(page, $html);
 
-panel.innerHTML = `
-<b>FarmSmart</b><br><br>
+      if (dnp) {
+        processorFn($html);
+        return processPage(url, dnp, wrapFn);
+      } else {
+        return processorFn($html);
+      }
+    };
 
-Max. vzdialenosť:<br>
-<input id="fs_maxdist" type="number"
- value="${DB.data.settings.maxDistance}" style="width:60px"><br><br>
+    return processPage(url, page, wrapFn);
+  };
 
-Cooldown (min):<br>
-<input id="fs_cd" type="number"
- value="${DB.data.settings.cooldownMin}" style="width:60px"><br><br>
+  const getDistance = function (origin, target) {
+    let a = origin.toCoord(true).x - target.toCoord(true).x;
+    let b = origin.toCoord(true).y - target.toCoord(true).y;
 
-<button id="fs_save">Uložiť</button>
-<button id="fs_test">Test DB</button>
-`;
+    return Math.hypot(a, b);
+  };
 
-document.body.appendChild(panel);
-
-/************************************************************
- * 6) TLAČIDLÁ V PANELI
- ************************************************************/
-document.getElementById('fs_save').addEventListener('click', function(){
-    const maxD = parseInt(document.getElementById('fs_maxdist').value, 10);
-    const cd = parseInt(document.getElementById('fs_cd').value, 10);
-
-    if (!isNaN(maxD)) DB.data.settings.maxDistance = maxD;
-    if (!isNaN(cd)) DB.data.settings.cooldownMin = cd;
-
-    DB.save();
-    alert('Uložené!');
-});
-
-document.getElementById('fs_test').addEventListener('click', function(){
-    alert(
-        'Tvoja dedina: ' + DK.village + '\n' +
-        'Dedín v DB: ' + DB.countVillages()
-    );
-});
-
-/************************************************************
- * 7) ENTER = A/B/C LOGIKA (FARM ASSISTANT)
- ************************************************************/
-if (location.href.includes('screen=am_farm')) {
-
-    function getCoordFromRow(row) {
-        const cell = row.querySelector('.village_coord');
-        if (!cell) return null;
-        return cell.innerText.trim();
-    }
-
-    function highlightRow(row, pattern) {
-        row.style.transition = 'background 0.2s';
-
-        if (pattern === 'A') {
-            row.style.background = '#1b5e20'; // zelená
-            row.style.color = '#fff';
-        }
-        else if (pattern === 'B') {
-            row.style.background = '#f57f17'; // žltá
-            row.style.color = '#000';
-        }
-        else if (pattern === 'C') {
-            row.style.background = '#b71c1c'; // červená
-            row.style.color = '#fff';
-        }
-    }
-
-    document.addEventListener('keydown', function(e){
-        if (e.key !== 'Enter') return;
-
-        const rows = Array.from(document.querySelectorAll('tr.farmRow'));
-        const row = rows.find(r => r.offsetParent !== null);
-
-        if (!row) {
-            console.log('[FarmSmart] Žiadny riadok na spracovanie.');
-            return;
-        }
-
-        const coord = getCoordFromRow(row);
-        if (!coord) {
-            console.log('[FarmSmart] Nenašli sa súradnice.');
-            return;
-        }
-
-        const v = DB.getVillage(coord);
-
-        if (inCooldown(v)) {
-            row.style.background = '#555';
-            row.style.color = '#ccc';
-            row.title = 'COOLDOWN';
-            console.log(`[FarmSmart] ${coord} je v cooldowne.`);
-            return;
-        }
-
-        highlightRow(row, v.nextPattern);
-        console.log(`[FarmSmart] ${coord} → poslať ${v.nextPattern}`);
+  const subtractArrays = function (array1, array2) {
+    let result = array1.map((val, i) => {
+      return val - array2[i];
     });
 
+    return result.some((v) => v < 0) ? false : result;
+  };
+
+  const getCurrentServerTime = function () {
+    let [hour, min, sec, day, month, year] = $('#serverTime')
+      .closest('p')
+      .text()
+      .match(/\d+/g);
+    return new Date(year, month - 1, day, hour, min, sec).getTime();
+  };
+
+  const timestampFromString = function (timestr) {
+    let d = $('#serverDate')
+      .text()
+      .split('/')
+      .map((x) => +x);
+    let todayPattern = new RegExp(
+      window.lang['aea2b0aa9ae1534226518faaefffdaad'].replace(
+        '%s',
+        '([\\d+|:]+)'
+      )
+    ).exec(timestr);
+    let tomorrowPattern = new RegExp(
+      window.lang['57d28d1b211fddbb7a499ead5bf23079'].replace(
+        '%s',
+        '([\\d+|:]+)'
+      )
+    ).exec(timestr);
+
+    if (todayPattern !== null) {
+      t = todayPattern[1].split(':');
+      date = new Date(d[2], d[1] - 1, d[0], t[0], t[1], t[2], t[3] || 0);
+    } else if (tomorrowPattern !== null) {
+      t = tomorrowPattern[1].split(':');
+      date = new Date(
+        d[2],
+        d[1] - 1,
+        d[0] + 1,
+        t[0],
+        t[1],
+        t[2],
+        t[3] || 0
+      );
+    } else {
+      // fix wrong later date pattern - lang value regex
+      const dateMatch = timestr.match(/(\d{1,2})\.(\d{1,2})\./);
+      const timeMatch = timestr.match(/(\d{2}):(\d{2}):(\d{2})(?::(\d{1,3}))?/);
+    
+      if (!dateMatch || !timeMatch) {
+        throw new Error('Failed to retrieve date' + timestr);
+      }
+    
+      const day = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+    
+      const hour = parseInt(timeMatch[1], 10);
+      const min = parseInt(timeMatch[2], 10);
+      const sec = parseInt(timeMatch[3], 10);
+      const ms = parseInt(timeMatch[4] || 0, 10);
+    
+      date = new Date(d[2], month, day, hour, min, sec, ms);
+    }
+
+    return date.getTime();
+  };
+
+  String.prototype.toCoord = function (objectified) {
+    let c = (this.match(/\d{1,3}\|\d{1,3}/g) || [false]).pop();
+    return c && objectified
+      ? { x: c.split('|')[0], y: c.split('|')[1] }
+      : c;
+  };
+
+  String.prototype.toNumber = function () {
+    return parseFloat(this);
+  };
+
+  Number.prototype.toNumber = function () {
+    return parseFloat(this);
+  };
+
+  return {
+    getUnitSpeeds,
+    processPage,
+    processAllPages,
+    getDistance,
+    subtractArrays,
+    getCurrentServerTime,
+    timestampFromString,
+  };
+})();
+
+window.FarmGod.Translation = (function () {
+  const msg = {
+    hu_HU: {
+      missingFeatures: 'A scriptnek szüksége van Prémium fiókra és Farm asszisztensre!',
+      options: {
+        title: 'FarmGod beállítások',
+        warning:
+          '<b>Figyelem:</b><br>' +
+          '- Az „A” sablon legyen az alap mikrofarm<br>' +
+          '- A „B” sablon egy nagyobb mikrofarm legyen<br>' +
+          '- Ellenőrizd a farm szűrőket használat előtt',
+        group: 'Farmolás ebből a csoportból:',
+        distance: 'Maximális mezőtávolság:',
+        time: 'Időköz farmok között (perc):',
+        losses: 'Farm küldése részleges veszteség esetén:',
+        maxloot: 'B sablon küldése, ha az előző loot tele volt:',
+        newbarbs: 'Új barbár falvak hozzáadása:',
+        button: 'Farmolás tervezése'
+      },
+      table: {
+        noFarmsPlanned: 'A jelenlegi beállításokkal nem küldhető farm.',
+        origin: 'Kiinduló falu',
+        target: 'Cél',
+        fields: 'Távolság',
+        farm: 'Farm',
+        goTo: 'Ugrás'
+      },
+      messages: {
+        villageChanged: 'Falu sikeresen megváltoztatva!',
+        villageError: 'Minden farm elküldve ebből a faluból!',
+        sendError: 'Hiba: a farm nem lett elküldve!'
+      }
+    }
+  };
+
+  const get = function () {
+    return msg.hasOwnProperty(game_data.locale)
+      ? msg[game_data.locale]
+      : msg.hu_HU;
+  };
+
+  return {
+    get,
+  };
+})();
+
+
+window.FarmGod.Main = (function (Library, Translation) {
+  const lib = Library;
+  const t = Translation.get();
+  let curVillage = null;
+  let farmBusy = false;
+
+  const init = function () {
+    if (
+      game_data.features.Premium.active &&
+      game_data.features.FarmAssistent.active
+    ) {
+      if (game_data.screen == 'am_farm') {
+        $.when(buildOptions()).then((html) => {
+          Dialog.show('FarmGod', html);
+
+          $('.optionButton')
+            .off('click')
+            .on('click', () => {
+              let optionGroup = parseInt($('.optionGroup').val());
+              let optionDistance = parseFloat(
+                $('.optionDistance').val()
+              );
+              let optionTime = parseFloat($('.optionTime').val());
+              let optionLosses =
+                $('.optionLosses').prop('checked');
+              let optionMaxloot =
+                $('.optionMaxloot').prop('checked');
+              let optionNewbarbs =
+                $('.optionNewbarbs').prop('checked') || false;
+
+              localStorage.setItem(
+                'farmGod_options',
+                JSON.stringify({
+                  optionGroup: optionGroup,
+                  optionDistance: optionDistance,
+                  optionTime: optionTime,
+                  optionLosses: optionLosses,
+                  optionMaxloot: optionMaxloot,
+                  optionNewbarbs: optionNewbarbs,
+                })
+              );
+
+              $('.optionsContent').html(
+                UI.Throbber[0].outerHTML + '<br><br>'
+              );
+              getData(
+                optionGroup,
+                optionNewbarbs,
+                optionLosses
+              ).then((data) => {
+                Dialog.close();
+
+                let plan = createPlanning(
+                  optionDistance,
+                  optionTime,
+                  optionMaxloot,
+                  data
+                );
+                $('.farmGodContent').remove();
+                $('#am_widget_Farm')
+                  .first()
+                  .before(buildTable(plan.farms));
+
+                bindEventHandlers();
+                UI.InitProgressBars();
+                UI.updateProgressBar(
+                  $('#FarmGodProgessbar'),
+                  0,
+                  plan.counter
+                );
+                $('#FarmGodProgessbar')
+                  .data('current', 0)
+                  .data('max', plan.counter);
+              });
+            });
+
+          document.querySelector('.optionButton').focus();
+        });
+      } else {
+        location.href = game_data.link_base_pure + 'am_farm';
+      }
+    } else {
+      UI.ErrorMessage(t.missingFeatures);
+    }
+  };
+
+  const bindEventHandlers = function () {
+    $('.farmGod_icon')
+      .off('click')
+      .on('click', function () {
+        if (
+          game_data.market != 'nl' ||
+          $(this).data('origin') == curVillage
+        ) {
+          sendFarm($(this));
+        } else {
+          UI.ErrorMessage(t.messages.villageError);
+        }
+      });
+
+    $(document)
+      .off('keydown')
+      .on('keydown', (event) => {
+        if ((event.keyCode || event.which) == 13) {
+          $('.farmGod_icon').first().trigger('click');
+        }
+      });
+
+    $('.switchVillage')
+      .off('click')
+      .on('click', function () {
+        curVillage = $(this).data('id');
+        UI.SuccessMessage(t.messages.villageChanged);
+        $(this).closest('tr').remove();
+      });
+  };
+
+  const buildOptions = function () {
+    let options = JSON.parse(localStorage.getItem('farmGod_options')) || {
+      optionGroup: 0,
+      optionDistance: 25,
+      optionTime: 10,
+      optionLosses: false,
+      optionMaxloot: true,
+      optionNewbarbs: true,
+    };
+    let checkboxSettings = [false, true, true, true, false];
+    let checkboxError = $('#plunder_list_filters')
+      .find('input[type="checkbox"]')
+      .map((i, el) => {
+        return $(el).prop('checked') != checkboxSettings[i];
+      })
+      .get()
+      .includes(true);
+    let $templateRows = $('form[action*="action=edit_all"]')
+      .find('input[type="hidden"][name*="template"]')
+      .closest('tr');
+    let templateError =
+      $templateRows.first().find('td').last().text().toNumber() >=
+      $templateRows.last().find('td').last().text().toNumber();
+
+    return $.when(buildGroupSelect(options.optionGroup)).then(
+      (groupSelect) => {
+        return `<style>#popup_box_FarmGod{text-align:center;width:550px;}</style>
+                <h3>${t.options.title}</h3><br><div class="optionsContent">
+                ${checkboxError || templateError
+            ? `<div class="info_box" style="line-height: 15px;font-size:10px;text-align:left;"><p style="margin:0px 5px;">${t.options.warning}<br></p></div><br>`
+            : ``
+          }
+                <div style="width:90%;margin:auto;background: url(\'graphic/index/main_bg.jpg\') 100% 0% #E3D5B3;border: 1px solid #7D510F;border-collapse: separate !important;border-spacing: 0px !important;"><table class="vis" style="width:100%;text-align:left;font-size:11px;">
+                  <tr><td>${t.options.group}</td><td>${groupSelect}</td></tr>
+                  <tr><td>${t.options.distance
+          }</td><td><input type="text" size="5" class="optionDistance" value="${options.optionDistance
+          }"></td></tr>
+                  <tr><td>${t.options.time
+          }</td><td><input type="text" size="5" class="optionTime" value="${options.optionTime
+          }"></td></tr>
+                  <tr><td>${t.options.losses
+          }</td><td><input type="checkbox" class="optionLosses" ${options.optionLosses ? 'checked' : ''
+          }></td></tr>
+                  <tr><td>${t.options.maxloot
+          }</td><td><input type="checkbox" class="optionMaxloot" ${options.optionMaxloot ? 'checked' : ''
+          }></td></tr>
+                  ${game_data.market == 'nl'
+            ? `<tr><td>${t.options.newbarbs
+            }</td><td><input type="checkbox" class="optionNewbarbs" ${options.optionNewbarbs ? 'checked' : ''
+            }></td></tr>`
+            : ''
+          }
+                </table></div><br><input type="button" class="btn optionButton" value="${t.options.button
+          }"></div>`;
+      }
+    );
+  };
+
+  const buildGroupSelect = function (id) {
+    return $.get(
+      TribalWars.buildURL('GET', 'groups', { ajax: 'load_group_menu' })
+    ).then((groups) => {
+      let html = `<select class="optionGroup">`;
+
+      groups.result.forEach((val) => {
+        if (val.type == 'separator') {
+          html += `<option disabled=""/>`;
+        } else {
+          html += `<option value="${val.group_id}" ${val.group_id == id ? 'selected' : ''
+            }>${val.name}</option>`;
+        }
+      });
+
+      html += `</select>`;
+
+      return html;
+    });
+  };
+
+  const buildTable = function (plan) {
+    let html = `<div class="vis farmGodContent"><h4>FarmGod</h4><table class="vis" width="100%">
+                <tr><div id="FarmGodProgessbar" class="progress-bar live-progress-bar progress-bar-alive" style="width:98%;margin:5px auto;"><div style="background: rgb(146, 194, 0);"></div><span class="label" style="margin-top:0px;"></span></div></tr>
+                <tr><th style="text-align:center;">${t.table.origin}</th><th style="text-align:center;">${t.table.target}</th><th style="text-align:center;">${t.table.fields}</th><th style="text-align:center;">${t.table.farm}</th></tr>`;
+
+    if (!$.isEmptyObject(plan)) {
+      for (let prop in plan) {
+        if (game_data.market == 'nl') {
+          html += `<tr><td colspan="4" style="background: #e7d098;"><input type="button" class="btn switchVillage" data-id="${plan[prop][0].origin.id}" value="${t.table.goTo} ${plan[prop][0].origin.name} (${plan[prop][0].origin.coord})" style="float:right;"></td></tr>`;
+        }
+
+        plan[prop].forEach((val, i) => {
+          html += `<tr class="farmRow row_${i % 2 == 0 ? 'a' : 'b'}">
+                    <td style="text-align:center;"><a href="${game_data.link_base_pure
+            }info_village&id=${val.origin.id}">${val.origin.name} (${val.origin.coord
+            })</a></td>
+                    <td style="text-align:center;"><a href="${game_data.link_base_pure
+            }info_village&id=${val.target.id}">${val.target.coord
+            }</a></td>
+                    <td style="text-align:center;">${val.fields.toFixed(2)}</td>
+                    <td style="text-align:center;"><a href="#" data-origin="${val.origin.id
+            }" data-target="${val.target.id}" data-template="${val.template.id
+            }" class="farmGod_icon farm_icon farm_icon_${val.template.name
+            }" style="margin:auto;"></a></td>
+                  </tr>`;
+        });
+      }
+    } else {
+      html += `<tr><td colspan="4" style="text-align: center;">${t.table.noFarmsPlanned}</td></tr>`;
+    }
+
+    html += `</table></div>`;
+
+    return html;
+  };
+
+  const getData = function (group, newbarbs, losses) {
+    let data = {
+      villages: {},
+      commands: {},
+      farms: { templates: {}, farms: {} },
+    };
+
+    let villagesProcessor = ($html) => {
+      let skipUnits = ['ram', 'catapult', 'knight', 'snob', 'militia'];
+      const mobileCheck = $('#mobileHeader').length > 0;
+
+      if (mobileCheck) {
+        let table = jQuery($html).find('.overview-container > div');
+        table.each((i, el) => {
+          try {
+            const villageId = jQuery(el)
+              .find('.quickedit-vn')
+              .data('id');
+            const name = jQuery(el)
+              .find('.quickedit-label')
+              .attr('data-text');
+            const coord = jQuery(el)
+              .find('.quickedit-label')
+              .text()
+              .toCoord();
+
+            const units = new Array(game_data.units.length).fill(0);
+            const unitsElements = jQuery(el).find(
+              '.overview-units-row > div.unit-row-item'
+            );
+
+            unitsElements.each((_, unitElement) => {
+              const img = jQuery(unitElement).find('img');
+              const span =
+                jQuery(unitElement).find('span.unit-row-name');
+              if (img.length && span.length) {
+                let unitType = img
+                  .attr('src')
+                  .split('unit_')[1]
+                  .replace('@2x.webp', '')
+                  .replace('.webp', '')
+                  .replace('.png', '');
+                const value = parseInt(span.text()) || 0;
+                const unitIndex =
+                  game_data.units.indexOf(unitType);
+                if (unitIndex !== -1) {
+                  units[unitIndex] = value;
+                }
+              }
+            });
+
+            const filteredUnits = units.filter(
+              (_, index) =>
+                skipUnits.indexOf(game_data.units[index]) === -1
+            );
+
+            data.villages[coord] = {
+              name: name,
+              id: villageId,
+              units: filteredUnits,
+            };
+          } catch (e) {
+            console.error('Error processing village data:', e);
+          }
+        });
+      } else {
+        $html
+          .find('#combined_table')
+          .find('.row_a, .row_b')
+          .filter((i, el) => {
+            return $(el).find('.bonus_icon_33').length == 0;
+          })
+          .map((i, el) => {
+            let $el = $(el);
+            let $qel = $el.find('.quickedit-label').first();
+            let units = [];
+
+            units = $el
+              .find('.unit-item')
+              .filter((index, element) => {
+                return (
+                  skipUnits.indexOf(game_data.units[index]) ==
+                  -1
+                );
+              })
+              .map((index, element) => {
+                return $(element).text().toNumber();
+              })
+              .get();
+
+            return (data.villages[$qel.text().toCoord()] = {
+              name: $qel.data('text'),
+              id: parseInt(
+                $el.find('.quickedit-vn').first().data('id')
+              ),
+              units: units,
+            });
+          });
+      }
+
+      console.log('villages', data.villages);
+      return data;
+    };
+
+    let commandsProcessor = ($html) => {
+      $html
+        .find('#commands_table')
+        .find('.row_a, .row_ax, .row_b, .row_bx')
+        .map((i, el) => {
+          let $el = $(el);
+          let coord = $el
+            .find('.quickedit-label')
+            .first()
+            .text()
+            .toCoord();
+
+          if (coord) {
+            if (!data.commands.hasOwnProperty(coord))
+              data.commands[coord] = [];
+            return data.commands[coord].push(
+              Math.round(
+                lib.timestampFromString(
+                  $el.find('td').eq(2).text().trim()
+                ) / 1000
+              )
+            );
+          }
+        });
+
+      return data;
+    };
+
+	let farmProcessor = ($html) => {
+	  if ($.isEmptyObject(data.farms.templates)) {
+		let unitSpeeds = lib.getUnitSpeeds();
+
+		$html
+		  .find('form[action*="action=edit_all"]')
+		  .find('input[type="hidden"][name*="template"]')
+		  .closest('tr')
+		  .each((i, el) => {
+			let $el = $(el);
+
+			// fix match error
+			const cls =
+			  $el.prev('tr').find('a.farm_icon').first().attr('class') ||
+			  $el.find('a.farm_icon').first().attr('class') ||
+			  '';
+
+			if (!cls) return;
+
+			const match = cls.match(/farm_icon_([a-z])/i);
+			if (!match) return;
+
+			const templateKey = match[1].toLowerCase();
+
+			data.farms.templates[templateKey] = {
+			  id: $el
+				.find(
+				  'input[type="hidden"][name*="template"][name*="[id]"]'
+				)
+				.first()
+				.val()
+				.toNumber(),
+
+			  units: $el
+				.find('input[type="text"], input[type="number"]')
+				.map((index, element) => {
+				  return $(element).val().toNumber();
+				})
+				.get(),
+
+			  speed: Math.max(
+				...$el
+				  .find('input[type="text"], input[type="number"]')
+				  .map((index, element) => {
+					return $(element).val().toNumber() > 0
+					  ? unitSpeeds[
+						  $(element)
+							.attr('name')
+							.trim()
+							.split('[')[0]
+						]
+					  : 0;
+				  })
+				  .get()
+			  ),
+			};
+		  });
+	  }
+
+	  $html
+		.find('#plunder_list')
+		.find('tr[id^="village_"]')
+		.each((i, el) => {
+		  let $el = $(el);
+
+		  const coord = $el
+			.find('a[href*="screen=report&mode=all&view="]')
+			.first()
+			.text()
+			.toCoord();
+
+		  if (!coord) return;
+
+		  let colorMatch = $el
+			.find('img[src*="graphic/dots/"]')
+			.attr('src')
+			?.match(/dots\/(green|yellow|red|blue|red_blue)/);
+
+		  data.farms.farms[coord] = {
+			id: $el.attr('id').split('_')[1].toNumber(),
+			color: colorMatch ? colorMatch[1] : undefined,
+			max_loot:
+			  $el.find('img[src*="max_loot/1"]').length > 0,
+		  };
+		});
+
+	  return data;
+	};
+
+    let findNewbarbs = () => {
+      if (newbarbs) {
+        return twLib.get('/map/village.txt').then((allVillages) => {
+          allVillages.match(/[^\r\n]+/g).forEach((villageData) => {
+            let [id, name, x, y, player_id] =
+              villageData.split(',');
+            let coord = `${x}|${y}`;
+
+            if (
+              player_id == 0 &&
+              !data.farms.farms.hasOwnProperty(coord)
+            ) {
+              data.farms.farms[coord] = {
+                id: id.toNumber(),
+              };
+            }
+          });
+
+          return data;
+        });
+      } else {
+        return data;
+      }
+    };
+
+    let filterFarms = () => {
+      data.farms.farms = Object.fromEntries(
+        Object.entries(data.farms.farms).filter(([key, val]) => {
+          return (
+            !val.hasOwnProperty('color') ||
+            (val.color != 'red' &&
+              val.color != 'red_blue' &&
+              (val.color != 'yellow' || losses))
+          );
+        })
+      );
+
+      return data;
+    };
+
+    return Promise.all([
+      lib.processAllPages(
+        TribalWars.buildURL('GET', 'overview_villages', {
+          mode: 'combined',
+          group: group,
+        }),
+        villagesProcessor
+      ),
+      lib.processAllPages(
+        TribalWars.buildURL('GET', 'overview_villages', {
+          mode: 'commands',
+          type: 'attack',
+        }),
+        commandsProcessor
+      ),
+      lib.processAllPages(
+        TribalWars.buildURL('GET', 'am_farm'),
+        farmProcessor
+      ),
+      findNewbarbs(),
+    ])
+      .then(filterFarms)
+      .then(() => {
+        return data;
+      });
+  };
+
+  const createPlanning = function (
+    optionDistance,
+    optionTime,
+    optionMaxloot,
+    data
+  ) {
+    let plan = { counter: 0, farms: {} };
+    let serverTime = Math.round(lib.getCurrentServerTime() / 1000);
+
+    for (let prop in data.villages) {
+      let orderedFarms = Object.keys(data.farms.farms)
+        .map((key) => {
+          return { coord: key, dis: lib.getDistance(prop, key) };
+        })
+        .sort((a, b) => (a.dis > b.dis ? 1 : -1));
+
+      orderedFarms.forEach((el) => {
+        let farmIndex = data.farms.farms[el.coord];
+        let template_name;
+
+// C útok – iba ak už padla aspoň 1 LK (farba != green)
+if (
+  farmIndex.hasOwnProperty('color') &&
+  farmIndex.color !== 'green' &&
+  data.farms.templates.hasOwnProperty('c') &&
+  data.villages[prop].units[
+    game_data.units.indexOf('light')
+  ] >= 6 &&
+  data.villages[prop].units[
+    game_data.units.indexOf('ram')
+  ] >= 2
+) {
+  template_name = 'c';
+}
+// B útok – plný loot
+else if (
+  optionMaxloot &&
+  farmIndex.hasOwnProperty('max_loot') &&
+  farmIndex.max_loot
+) {
+  template_name = 'b';
+}
+// A útok – default
+else {
+  template_name = 'a';
 }
 
-/************************************************************
- * HOTOVO
- ************************************************************/
-console.log('[FarmSmart] LOADED');
+        let template = data.farms.templates[template_name];
+        let unitsLeft = lib.subtractArrays(
+          data.villages[prop].units,
+          template.units
+        );
 
-} catch (e) {
-    console.error('[FarmSmart ERROR]', e);
-    alert('Chyba (pozri F12): ' + e.message);
-}
+        let distance = lib.getDistance(prop, el.coord);
+        let arrival = Math.round(
+          serverTime +
+          distance * template.speed * 60 +
+          Math.round(plan.counter / 5)
+        );
+        let maxTimeDiff = Math.round(optionTime * 60);
+        let timeDiff = true;
+        if (data.commands.hasOwnProperty(el.coord)) {
+          if (
+            !farmIndex.hasOwnProperty('color') &&
+            data.commands[el.coord].length > 0
+          )
+            timeDiff = false;
+          data.commands[el.coord].forEach((timestamp) => {
+            if (Math.abs(timestamp - arrival) < maxTimeDiff)
+              timeDiff = false;
+          });
+        } else {
+          data.commands[el.coord] = [];
+        }
 
+        if (unitsLeft && timeDiff && distance < optionDistance) {
+          plan.counter++;
+          if (!plan.farms.hasOwnProperty(prop)) plan.farms[prop] = [];
+
+          plan.farms[prop].push({
+            origin: {
+              coord: prop,
+              name: data.villages[prop].name,
+              id: data.villages[prop].id,
+            },
+            target: { coord: el.coord, id: farmIndex.id },
+            fields: distance,
+            template: { name: template_name, id: template.id },
+          });
+
+          data.villages[prop].units = unitsLeft;
+          data.commands[el.coord].push(arrival);
+        }
+      });
+    }
+
+    return plan;
+  };
+
+  const sendFarm = function ($this) {
+    let n = Timing.getElapsedTimeSinceLoad();
+    if (
+      !farmBusy &&
+      !(
+        Accountmanager.farm.last_click &&
+        n - Accountmanager.farm.last_click < 200
+      )
+    ) {
+      farmBusy = true;
+      Accountmanager.farm.last_click = n;
+      let $pb = $('#FarmGodProgessbar');
+
+      TribalWars.post(
+        Accountmanager.send_units_link.replace(
+          /village=(\d+)/,
+          'village=' + $this.data('origin')
+        ),
+        null,
+        {
+          target: $this.data('target'),
+          template_id: $this.data('template'),
+          source: $this.data('origin'),
+        },
+        function (r) {
+          UI.SuccessMessage(r.success);
+          $pb.data('current', $pb.data('current') + 1);
+          UI.updateProgressBar(
+            $pb,
+            $pb.data('current'),
+            $pb.data('max')
+          );
+          $this.closest('.farmRow').remove();
+          farmBusy = false;
+        },
+        function (r) {
+          UI.ErrorMessage(r || t.messages.sendError);
+          $pb.data('current', $pb.data('current') + 1);
+          UI.updateProgressBar(
+            $pb,
+            $pb.data('current'),
+            $pb.data('max')
+          );
+          $this.closest('.farmRow').remove();
+          farmBusy = false;
+        }
+      );
+    }
+  };
+
+  return {init};
+})(window.FarmGod.Library, window.FarmGod.Translation);
+
+(() => {
+  window.FarmGod.Main.init();
 })();

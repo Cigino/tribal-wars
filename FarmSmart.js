@@ -334,35 +334,35 @@ window.FarmGod.Library = (function () {
 
 window.FarmGod.Translation = (function () {
   const msg = {
-    hu_HU: {
-      missingFeatures: 'A scriptnek szüksége van Prémium fiókra és Farm asszisztensre!',
+    sk_SK: {
+      missingFeatures: 'Skript vyžaduje Prémiový účet a Farm asistenta!',
       options: {
-        title: 'FarmGod beállítások',
+        title: 'FarmSmart nastavenia',
         warning:
-          '<b>Figyelem:</b><br>' +
-          '- Az „A” sablon legyen az alap mikrofarm<br>' +
-          '- A „B” sablon egy nagyobb mikrofarm legyen<br>' +
-          '- Ellenőrizd a farm szűrőket használat előtt',
-        group: 'Farmolás ebből a csoportból:',
-        distance: 'Maximális mezőtávolság:',
-        time: 'Időköz farmok között (perc):',
-        losses: 'Farm küldése részleges veszteség esetén:',
-        maxloot: 'B sablon küldése, ha az előző loot tele volt:',
-        newbarbs: 'Új barbár falvak hozzáadása:',
-        button: 'Farmolás tervezése'
+          '<b>Upozornenie:</b><br>' +
+          '- Šablóna „A“ má byť základný mikro farm<br>' +
+          '- Šablóna „B“ má byť väčší mikro farm<br>' +
+          '- Pred použitím skontroluj farm filtre',
+        group: 'Farmovať z tejto skupiny:',
+        distance: 'Maximálna vzdialenosť (polí):',
+        time: 'Interval medzi farmami (minúty):',
+        losses: 'Posielať farm aj pri stratách:',
+        maxloot: 'Použiť B šablónu pri plnom loote:',
+        newbarbs: 'Pridávať nové barbarské dediny:',
+        button: 'Naplánovať farmy'
       },
       table: {
-        noFarmsPlanned: 'A jelenlegi beállításokkal nem küldhető farm.',
-        origin: 'Kiinduló falu',
-        target: 'Cél',
-        fields: 'Távolság',
+        noFarmsPlanned: 'Pri aktuálnych nastaveniach nie je možné poslať žiadne farmy.',
+        origin: 'Zdrojová dedina',
+        target: 'Cieľ',
+        fields: 'Vzdialenosť',
         farm: 'Farm',
-        goTo: 'Ugrás'
+        goTo: 'Prejsť na'
       },
       messages: {
-        villageChanged: 'Falu sikeresen megváltoztatva!',
-        villageError: 'Minden farm elküldve ebből a faluból!',
-        sendError: 'Hiba: a farm nem lett elküldve!'
+        villageChanged: 'Dedina bola úspešne zmenená!',
+        villageError: 'Z tejto dediny už boli odoslané všetky farmy!',
+        sendError: 'Chyba: farm sa nepodarilo odoslať!'
       }
     }
   };
@@ -370,15 +370,13 @@ window.FarmGod.Translation = (function () {
   const get = function () {
     return msg.hasOwnProperty(game_data.locale)
       ? msg[game_data.locale]
-      : msg.hu_HU;
+      : msg.sk_SK;
   };
 
   return {
     get,
   };
 })();
-
-
 window.FarmGod.Main = (function (Library, Translation) {
   const lib = Library;
   const t = Translation.get();
